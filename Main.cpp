@@ -158,7 +158,7 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 							swprintf_s(
 								command,
 								4096,
-								L" --no-mtime %ls --ffmpeg-location \"%ls\" %ls \"%ls\"",
+								L" --no-mtime --no-playlist %ls --ffmpeg-location \"%ls\" %ls \"%ls\"",
 								playlist_command,
 								ffmpeg_path,
 								convert_command,
@@ -204,7 +204,7 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 							swprintf_s(
 								command,
 								4096,
-								L" --no-mtime %ls --ffmpeg-location \"%ls\" -x %ls --audio-quality 0 \"%ls\"",
+								L" --no-mtime --no-playlist %ls --ffmpeg-location \"%ls\" -x %ls --audio-quality 0 \"%ls\"",
 								playlist_command,
 								ffmpeg_path,
 								convert_command,
