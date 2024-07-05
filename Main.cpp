@@ -249,7 +249,7 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 }
 
 int WINAPI wWinMain(const HINSTANCE instance, const HINSTANCE prev_instance, const PWSTR cmd_line, const int cmd_show) {
-	const char* version = "00001";
+	const char* version = "00002";
 	const int version_length = 5;
 
 	const LPCWSTR window_class_name = L"YTDownloaderWindowClass";
