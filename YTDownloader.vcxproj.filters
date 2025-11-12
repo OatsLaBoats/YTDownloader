@@ -42,6 +42,9 @@
     <None Include="Vendor\ffmpeg.bin">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="Vendor\deno.bin">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Image Include="button.ico">

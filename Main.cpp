@@ -24,6 +24,7 @@ static HWND convert_checkbox = nullptr;
 static WCHAR app_path[MAX_PATH + 1] = {};
 static WCHAR ytdlp_path[MAX_PATH + 1] = {};
 static WCHAR ffmpeg_path[MAX_PATH + 1] = {};
+static WCHAR deno_path[MAX_PATH + 1] = {};
 static WCHAR version_path[MAX_PATH + 1] = {};
 
 static WCHAR link[2048] = {};
@@ -144,6 +145,7 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 
 						memset(&process, 0, sizeof(process));
 
+						// Download video
 						if (handle == video_button) {
 							if (playlist_index > 0) {
 								swprintf_s(playlist_command, 256, L"--playlist-start %d --playlist-end %d", playlist_index, playlist_index);
@@ -158,8 +160,9 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 							swprintf_s(
 								command,
 								4096,
-								L" --no-mtime --no-playlist %ls --ffmpeg-location \"%ls\" %ls \"%ls\"",
+								L" --no-mtime --no-playlist %ls --js-runtimes deno:\"%ls\" --ffmpeg-location \"%ls\" %ls \"%ls\"",
 								playlist_command,
+								deno_path,
 								ffmpeg_path,
 								convert_command,
 								link
@@ -191,6 +194,7 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 
 							download_in_progress = true;
 						}
+						// Download audio
 						else if (handle == audio_button) {
 							if (playlist_index > 0) {
 								swprintf_s(playlist_command, 256, L"--playlist-start %d --playlist-end %d", playlist_index, playlist_index);
@@ -204,8 +208,9 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 							swprintf_s(
 								command,
 								4096,
-								L" --no-mtime --no-playlist %ls --ffmpeg-location \"%ls\" -x %ls --audio-quality 0 \"%ls\"",
+								L" --no-mtime --no-playlist %ls --js-runtimes deno:\"%ls\" --ffmpeg-location \"%ls\" -x %ls --audio-quality 0 \"%ls\"",
 								playlist_command,
+								deno_path,
 								ffmpeg_path,
 								convert_command,
 								link
@@ -249,7 +254,7 @@ static LRESULT CALLBACK window_proc(const HWND hwnd, const UINT msg, const WPARA
 }
 
 int WINAPI wWinMain(const HINSTANCE instance, const HINSTANCE prev_instance, const PWSTR cmd_line, const int cmd_show) {
-	const char* version = "00007";
+	const char* version = "00008";
 	const int version_length = 5;
 
 	const LPCWSTR window_class_name = L"YTDownloaderWindowClass";
@@ -292,6 +297,7 @@ int WINAPI wWinMain(const HINSTANCE instance, const HINSTANCE prev_instance, con
 	swprintf_s(app_path, MAX_PATH + 1, L"%ls\\YT Downloader", appdata_path);
 	swprintf_s(ytdlp_path, MAX_PATH + 1, L"%ls\\YT Downloader\\yt-dlp.exe", appdata_path);
 	swprintf_s(ffmpeg_path, MAX_PATH + 1, L"%ls\\YT Downloader\\ffmpeg.exe", appdata_path);
+	swprintf_s(deno_path, MAX_PATH + 1, L"%ls\\YT Downloader\\deno.exe", appdata_path);
 	swprintf_s(version_path, MAX_PATH + 1, L"%ls\\YT Downloader\\version", appdata_path);
 
 	// Check if appdata directory exists
@@ -320,6 +326,7 @@ int WINAPI wWinMain(const HINSTANCE instance, const HINSTANCE prev_instance, con
 	if (should_update) {
 		DeleteFileW(ytdlp_path);
 		DeleteFileW(ffmpeg_path);
+		DeleteFileW(deno_path);
 	}
 
 	job = CreateJobObjectW(nullptr, nullptr);
@@ -344,6 +351,7 @@ int WINAPI wWinMain(const HINSTANCE instance, const HINSTANCE prev_instance, con
 
 	if (!extract_tool(decompressor, ytdlp_path, IDR_RCDATA1)) return_error;
 	if (!extract_tool(decompressor, ffmpeg_path, IDR_RCDATA2)) return_error;
+	if (!extract_tool(decompressor, deno_path, IDR_RCDATA3)) return_error;
 
 	CloseDecompressor(decompressor);
 	decompressor = nullptr;

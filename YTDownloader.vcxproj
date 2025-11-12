@@ -144,6 +144,7 @@
     <ResourceCompile Include="YTDownloader.rc" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Vendor\deno.bin" />
     <None Include="Vendor\ffmpeg.bin" />
     <None Include="Vendor\yt-dlp.bin" />
   </ItemGroup>
