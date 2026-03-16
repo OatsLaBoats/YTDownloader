@@ -1,5 +1,5 @@
 [package]
-name = "yt-downloader"
+name = "yt_downloader"
 version = "0.1.0"
 edition = "2024"
 build = "build.rs"
@@ -10,6 +10,7 @@ iced_aw = { version = "0.13.1", features = ["full"] }
 
 windows = { version = "0.62.2", features = [
   "Win32_UI_WindowsAndMessaging",
+  "Win32_System_LibraryLoader",
 ]}
 
 serde = "1.0.228"

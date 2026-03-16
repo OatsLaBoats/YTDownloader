@@ -5697,7 +5697,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "yt-downloader"
+name = "yt_downloader"
 version = "0.1.0"
 dependencies = [
  "anyhow",

@@ -1,9 +1,10 @@
 use iced::*;
 use iced::widget::*;
 use iced::widget::column;
+use yt_downloader::platform::windows;
 
 fn main() -> iced::Result {
-    let icon_data = include_bytes!("../res/YTDownloader.ico"); // For some reason it fail with the ico file but works with the png.
+    let icon_data = include_bytes!("../res/YTDownloader.png");
     let icon = iced::window::icon::from_file_data(icon_data, None).ok();
     
     iced::application(App::new, App::update, App::view)
