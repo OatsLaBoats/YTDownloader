@@ -5,15 +5,14 @@ pub struct Screen {
     
 }
 
-impl Default for Screen {
-    fn default() -> Self {
+impl Screen {
+    // Unlike App screens can have state passed into them so we don't use the default trait
+    pub fn new() -> Self {
         Self {
             
         }
     }
-}
-
-impl Screen {
+    
     pub fn update(&mut self, message: Message) -> Task<Message> {
         todo!()
     }
