@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+use std::fmt::Debug;
 use std::path::PathBuf;
 
 use iced::*;
@@ -7,8 +8,10 @@ use iced::widget::*;
 use iced::widget::column;
 
 use yt_downloader::lang::*;
-use yt_downloader::screen;
+use yt_downloader::screen::*;
 use yt_downloader::platform::windows::*;
+
+use tracing::error;
 
 // TODO: There seems to be a memory leak somewhere when resizing the window
 
@@ -40,13 +43,33 @@ struct App {
     downloads_path: PathBuf,
     appdata_path: PathBuf,
     downloader_path: PathBuf,
+    
+    active_screen: Screen,
 }
 
 impl Default for App {
+    // NOTE: During initialization all errors are fatal. We need to make sure they are kept to a minimum.
     fn default() -> Self {
-        // TODO: Handle errors
-        let downloads = dirs::download_dir().unwrap();
-        let appdata = dirs::data_local_dir().unwrap();
+        let Some(downloads) = dirs::download_dir() else {
+            error!("Failed to find Downloads Folder");
+            error_dialog("Failed to find Downloads folder.");
+            std::process::exit(-1);
+        };
+        
+        let Some(appdata) = dirs::data_local_dir() else {
+            error!("Failed to find AppData/Local");
+            error_dialog("Failed to find AppData/Local.");
+            std::process::exit(-1);
+        };
+
+        let exe_path = match std::env::current_exe() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to find the path of the executable {}", e);
+                error_dialog("Failed to find the path of the executable.");
+                std::process::exit(-1);
+            },
+        };
 
         let appdata_path = PathBuf::from(&appdata);
 
@@ -59,6 +82,8 @@ impl Default for App {
         let ffmpeg_path = downloader_path.clone();
         let ffprobe_path = downloader_path.clone();
         let deno_path = downloader_path.clone();
+
+        let active_screen = Screen::Update;
        
         Self {
             languages: TextDatabase::default(),
@@ -67,6 +92,8 @@ impl Default for App {
             downloads_path: PathBuf::from(&downloads),
             appdata_path,
             downloader_path,
+
+            active_screen,
         }
     }
 }

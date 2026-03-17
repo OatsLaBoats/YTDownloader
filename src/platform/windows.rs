@@ -1,5 +1,14 @@
 // Utilities for windows
 
+use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::PCSTR;
+
+pub fn error_dialog(text: &str) {
+    unsafe {
+        MessageBoxA(None, PCSTR(text.as_ptr()), PCSTR::null(), MB_OK | MB_ICONERROR);
+    }
+}
+
 // We use a powershell command to handle restarting the app:
 // 1. Waits for the process to exit.
 // 2. Moves the executable to it's AppData/Local location.

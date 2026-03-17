@@ -9,7 +9,8 @@ iced = { version = "0.14.0", features = ["tokio", "image"] }
 iced_aw = { version = "0.13.1", features = ["full"] }
 
 windows = { version = "0.62.2", features = [
-
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Globalization",
 ]}
 
 serde = "1.0.228"
