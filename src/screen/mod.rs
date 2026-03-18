@@ -2,7 +2,6 @@ pub mod home;
 pub mod update;
 
 pub enum Screen {
-    Install,
-    Update,
+    Update(update::Screen),
     Home,
 }

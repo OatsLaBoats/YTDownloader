@@ -10,6 +10,7 @@ pub enum Language {
 }
 
 pub struct TextDatabase {
+    pub current_language: Language,
     translations: HashMap<Language, Translation>,
 }
 
@@ -20,14 +21,15 @@ impl Default for TextDatabase {
         translations.insert(Language::German, german::new());
         
         Self {
+            current_language: Language::English,
             translations,
         }
     }
 }
 
 impl TextDatabase {
-    pub fn get_translation(&self, language: Language) -> &Translation {
-        self.translations.get(&language).unwrap()
+    pub fn translation(&self) -> &Translation {
+        self.translations.get(&self.current_language).unwrap()
     }
 }
 
@@ -35,6 +37,7 @@ type Text = &'static str;
 
 #[derive(Default, Clone)]
 pub struct Translation {
-    pub paste: Text,
-    pub link_text_input_description: Text,
+    pub update_screen_install_label: Text,
+    pub update_screen_update_label: Text,
+    pub context_menu_paste: Text,
 }

@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use iced::*;
 use iced::widget::*;
@@ -9,7 +10,8 @@ use iced::widget::column;
 
 use yt_downloader::AppPaths;
 use yt_downloader::lang::*;
-use yt_downloader::screen::*;
+use yt_downloader::screen::Screen;
+use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
 use tracing::{error, info};
@@ -39,10 +41,7 @@ fn main() -> iced::Result {
 // Holds the state for the whole app.
 struct App {
     languages: TextDatabase,
-    active_language: Language,
-
     paths: Arc<AppPaths>,
-    
     active_screen: Screen,
 }
 
@@ -91,7 +90,7 @@ impl Default for App {
         };
 
         // Non fatal
-        let active_language = match get_user_language() {
+        let user_language = match get_user_language() {
             Ok(v) => v,
             Err(e) => {
                 error!("Failed to get active language {e}");
@@ -132,33 +131,38 @@ impl Default for App {
         let mut old_version_file = downloader_dir.clone();
         old_version_file.push("version");
 
-        let active_screen = if exe_dir_path == downloader_dir {
+        let paths = Arc::new(AppPaths {
+            downloads_dir,
+            appdata_dir,
+            downloader_dir,
+            bin_dir,
+            yt_dlp_exe,
+            ffmpeg_dir,
+            deno_exe,
+            settings_file,
+
+            old_yt_downloader_exe,
+            old_yt_dlp_exe,
+            old_ffmpeg_exe,
+            old_deno_exe,
+            old_version_file,
+        });
+
+        let mut languages = TextDatabase::default();
+        languages.current_language = user_language;
+
+        let active_screen = if exe_dir_path == paths.downloads_dir {
             Screen::Home
         } else {
-            Screen::Install
+            Screen::Update(screen::update::Screen::new(
+                true,
+                Arc::clone(&paths),
+            ))
         };
       
         Self {
-            languages: TextDatabase::default(),
-            active_language,
-
-            paths: Arc::new(AppPaths {
-                downloads_dir,
-                appdata_dir,
-                downloader_dir,
-                bin_dir,
-                yt_dlp_exe,
-                ffmpeg_dir,
-                deno_exe,
-                settings_file,
-
-                old_yt_downloader_exe,
-                old_yt_dlp_exe,
-                old_ffmpeg_exe,
-                old_deno_exe,
-                old_version_file,
-            }),
-
+            languages,
+            paths,
             active_screen,
         }
     }
@@ -170,14 +174,20 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        container("HEllo").into()
-    }
+        match &self.active_screen {
+            Screen::Update(update_screen) => {
+                update_screen.view(self.languages.translation())
+                    .map(Message::UpdateScreen)
+            },
 
-    fn translation(&self) -> &Translation {
-        self.languages.get_translation(self.active_language)
+            Screen::Home => {
+                todo!()
+            },
+        }
     }
 }
 
 #[derive(Clone)]
 enum Message {
+    UpdateScreen(screen::update::Message),
 }
