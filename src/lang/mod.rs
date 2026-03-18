@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
 
 mod english;
 mod german;
 
-#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+#[derive(Hash, Eq, PartialEq, Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum Language {
     English,
     German,

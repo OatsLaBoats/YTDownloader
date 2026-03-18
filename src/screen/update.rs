@@ -4,14 +4,13 @@ use iced::alignment::Horizontal;
 use iced::*;
 use iced::widget::*;
 use iced::widget::column;
-use iced::widget::space::*;
 
-use crate::AppPaths;
-use crate::lang::{TextDatabase, Translation};
+use crate::Paths;
+use crate::lang::Translation;
 
 pub struct Screen {
     first_install: bool,
-    paths: Arc<AppPaths>,
+    paths: Arc<Paths>,
     progess: f32,
 }
 
@@ -19,7 +18,7 @@ impl Screen {
     // Unlike App screens can have state passed into them so we don't use the default trait
     pub fn new(
         first_install: bool,
-        paths: Arc<AppPaths>,
+        paths: Arc<Paths>,
     ) -> Self {
         Self {
             first_install,
@@ -27,11 +26,10 @@ impl Screen {
             progess: 0.0,
         }
     }
-    
-    pub fn update(&mut self, message: Message) -> Task<Message> {
-        todo!()
-    }
 
+    pub fn update(&mut self, message: Message) -> Action {
+        Action::None
+    }
     
     pub fn view(&self, translation: &Translation) -> Element<'_, Message> {
         center(
@@ -57,4 +55,9 @@ impl Screen {
 #[derive(Clone)]
 pub enum Message {
     
+}
+
+pub enum Action {
+    None,
+    Run(Task<Message>),
 }

@@ -1,22 +1,18 @@
 #![windows_subsystem = "console"]
 
-use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-use iced::*;
-use iced::widget::*;
-use iced::widget::column;
+use tracing::error;
+use iced::{Element, Task};
 
-use yt_downloader::AppPaths;
+use yt_downloader::*;
 use yt_downloader::lang::*;
 use yt_downloader::screen::Screen;
 use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
-use tracing::{error, info};
-
-// TODO: There seems to be a memory leak somewhere when resizing the window
+// TODO: Write the settings file out when settings change
+// TODO: Check versions of tools and download from github
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -41,15 +37,15 @@ fn main() -> iced::Result {
 // Holds the state for the whole app.
 struct App {
     languages: TextDatabase,
-    paths: Arc<AppPaths>,
+    paths: Arc<Paths>,
+    settings: yt_downloader::Settings,
     active_screen: Screen,
 }
 
 impl Default for App {
     // NOTE: During initialization all errors are fatal. We need to make sure they are kept to a minimum.
     fn default() -> Self {
-        // Ensure we can run the install script. In the future maybe support other ways
-        // like bash or cmd
+        // Ensure we can run the install script. In the future maybe support other ways like bash or cmd.
         if let Err(e) = which::which("powershell") {
             error!("Failed to find powershell executable {}", e);
             error_dialog("Failed to find powershell executable");
@@ -131,7 +127,7 @@ impl Default for App {
         let mut old_version_file = downloader_dir.clone();
         old_version_file.push("version");
 
-        let paths = Arc::new(AppPaths {
+        let paths = Arc::new(Paths {
             downloads_dir,
             appdata_dir,
             downloader_dir,
@@ -148,9 +144,39 @@ impl Default for App {
             old_version_file,
         });
 
-        let mut languages = TextDatabase::default();
-        languages.current_language = user_language;
 
+        let mut settings = Settings {
+            ui_language: user_language,
+            ui_theme: Theme::Auto,
+        };
+
+        // Read the settings file if they exist
+        if paths.settings_file.exists() {
+            let mut had_error = false;
+            let contents = match std::fs::read_to_string(&paths.settings_file) {
+                Ok(v) => v,
+                Err(e) => {
+                    error!("Failed to read settings file {e}");
+                    had_error = true;
+                    String::new()
+                },
+            };
+
+            if !had_error {
+                match serde_json::from_str(&contents) {
+                    Ok(v) => settings = v,
+                    Err(e) => {
+                        error!("Failed to parse settings file {e}");
+                    },
+                }
+            }
+        }
+
+        tracing::info!("{settings:?}");
+
+        let mut languages = TextDatabase::default();
+        languages.current_language = settings.ui_language;
+        
         let active_screen = if exe_dir_path == paths.downloads_dir {
             Screen::Home
         } else {
@@ -163,6 +189,7 @@ impl Default for App {
         Self {
             languages,
             paths,
+            settings,
             active_screen,
         }
     }
@@ -170,7 +197,19 @@ impl Default for App {
 
 impl App {
     fn update(&mut self, message: Message) -> Task<Message> {
-        Task::none()
+        match message {
+            Message::UpdateScreen(message) => {
+                if let Screen::Update(update_screen) = &mut self.active_screen {
+                    let action = update_screen.update(message);
+                    match action {
+                        screen::update::Action::None => Task::none(),
+                        screen::update::Action::Run(task) => task.map(Message::UpdateScreen),
+                    }
+                } else {
+                    Task::none()
+                }
+            },
+        }
     }
 
     fn view(&self) -> Element<'_, Message> {

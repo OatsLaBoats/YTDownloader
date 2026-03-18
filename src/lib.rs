@@ -1,10 +1,29 @@
 use std::path::PathBuf;
+use serde::{Serialize, Deserialize};
 
 pub mod platform;
 pub mod screen;
 pub mod lang;
+pub mod github;
 
-pub struct AppPaths {
+use lang::Language;
+
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum Theme {
+    Dark,
+    Light,
+    Auto,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Settings {
+    pub ui_language: Language,
+    pub ui_theme: Theme,
+}
+
+pub struct Paths {
     pub downloads_dir: PathBuf,
     pub appdata_dir: PathBuf,
     pub downloader_dir: PathBuf,
