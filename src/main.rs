@@ -1,11 +1,13 @@
 #![windows_subsystem = "console"]
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use iced::*;
 use iced::widget::*;
 use iced::widget::column;
 
+use yt_downloader::AppPaths;
 use yt_downloader::lang::*;
 use yt_downloader::screen::*;
 use yt_downloader::platform::windows::*;
@@ -39,9 +41,7 @@ struct App {
     languages: TextDatabase,
     active_language: Language,
 
-    downloads_path: PathBuf,
-    appdata_path: PathBuf,
-    downloader_path: PathBuf,
+    paths: Arc<AppPaths>,
     
     active_screen: Screen,
 }
@@ -57,15 +57,21 @@ impl Default for App {
             std::process::exit(-1);
         }
         
-        let Some(downloads) = dirs::download_dir() else {
+        let Some(downloads_dir) = dirs::download_dir() else {
             error!("Failed to find Downloads Folder");
             error_dialog("Failed to find Downloads folder.");
             std::process::exit(-1);
         };
         
-        let Some(appdata) = dirs::data_local_dir() else {
+        let Some(appdata_dir) = dirs::data_local_dir() else {
             error!("Failed to find AppData/Local");
             error_dialog("Failed to find AppData/Local.");
+            std::process::exit(-1);
+        };
+
+        let Some(desktop_dir_path) = dirs::desktop_dir() else {
+            error!("Failed to find Desktop directory");
+            error_dialog("Failed to find Desktop directory");
             std::process::exit(-1);
         };
 
@@ -78,7 +84,7 @@ impl Default for App {
             },
         };
 
-        let Some(exe_folder_path) = exe_path.parent() else {
+        let Some(exe_dir_path) = exe_path.parent() else {
             error!("Failed to get the path to the folder containing the installer");
             error_dialog("Failed to get the path to the folder containing the installer");
             std::process::exit(-1);
@@ -93,19 +99,40 @@ impl Default for App {
             },
         };
 
-        let appdata_path = PathBuf::from(&appdata);
+        let mut downloader_dir = appdata_dir.clone();
+        downloader_dir.push("YTDownloader");
 
-        let mut downloader_path = appdata_path.clone();
-        downloader_path.push("YTDownloader");
+        let mut bin_dir = downloader_dir.clone();
+        bin_dir.push("bin");
 
-        let mut yt_dlp_path = downloader_path.clone();
-        yt_dlp_path.push("yt-dlp.exe");
+        let mut yt_dlp_exe = bin_dir.clone();
+        yt_dlp_exe.push("yt-dlp.exe");
 
-        let ffmpeg_path = downloader_path.clone();
-        let ffprobe_path = downloader_path.clone();
-        let deno_path = downloader_path.clone();
+        let mut ffmpeg_dir = bin_dir.clone();
+        ffmpeg_dir.push("ffmpeg");
 
-        let active_screen = if exe_folder_path == downloader_path {
+        let mut deno_exe = bin_dir.clone();
+        deno_exe.push("deno.exe");
+
+        let mut settings_file = downloader_dir.clone();
+        settings_file.push("settings.json");
+
+        let mut old_yt_downloader_exe = desktop_dir_path.clone();
+        old_yt_downloader_exe.push("YTDownloader.exe");
+
+        let mut old_yt_dlp_exe = downloader_dir.clone();
+        old_yt_dlp_exe.push("yt-dlp.exe");
+
+        let mut old_ffmpeg_exe = downloader_dir.clone();
+        old_ffmpeg_exe.push("ffmpeg.exe");
+
+        let mut old_deno_exe = downloader_dir.clone();
+        old_deno_exe.push("deno.exe");
+
+        let mut old_version_file = downloader_dir.clone();
+        old_version_file.push("version");
+
+        let active_screen = if exe_dir_path == downloader_dir {
             Screen::Home
         } else {
             Screen::Install
@@ -115,9 +142,22 @@ impl Default for App {
             languages: TextDatabase::default(),
             active_language,
 
-            downloads_path: PathBuf::from(&downloads),
-            appdata_path,
-            downloader_path,
+            paths: Arc::new(AppPaths {
+                downloads_dir,
+                appdata_dir,
+                downloader_dir,
+                bin_dir,
+                yt_dlp_exe,
+                ffmpeg_dir,
+                deno_exe,
+                settings_file,
+
+                old_yt_downloader_exe,
+                old_yt_dlp_exe,
+                old_ffmpeg_exe,
+                old_deno_exe,
+                old_version_file,
+            }),
 
             active_screen,
         }
