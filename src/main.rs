@@ -1,6 +1,5 @@
-#![windows_subsystem = "windows"]
+#![windows_subsystem = "console"]
 
-use std::fmt::Debug;
 use std::path::PathBuf;
 
 use iced::*;
@@ -11,7 +10,7 @@ use yt_downloader::lang::*;
 use yt_downloader::screen::*;
 use yt_downloader::platform::windows::*;
 
-use tracing::error;
+use tracing::{error, info};
 
 // TODO: There seems to be a memory leak somewhere when resizing the window
 
@@ -50,6 +49,14 @@ struct App {
 impl Default for App {
     // NOTE: During initialization all errors are fatal. We need to make sure they are kept to a minimum.
     fn default() -> Self {
+        // Ensure we can run the install script. In the future maybe support other ways
+        // like bash or cmd
+        if let Err(e) = which::which("powershell") {
+            error!("Failed to find powershell executable {}", e);
+            error_dialog("Failed to find powershell executable");
+            std::process::exit(-1);
+        }
+        
         let Some(downloads) = dirs::download_dir() else {
             error!("Failed to find Downloads Folder");
             error_dialog("Failed to find Downloads folder.");
@@ -71,6 +78,21 @@ impl Default for App {
             },
         };
 
+        let Some(exe_folder_path) = exe_path.parent() else {
+            error!("Failed to get the path to the folder containing the installer");
+            error_dialog("Failed to get the path to the folder containing the installer");
+            std::process::exit(-1);
+        };
+
+        // Non fatal
+        let active_language = match get_user_language() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to get active language {e}");
+                Language::English
+            },
+        };
+
         let appdata_path = PathBuf::from(&appdata);
 
         let mut downloader_path = appdata_path.clone();
@@ -83,11 +105,15 @@ impl Default for App {
         let ffprobe_path = downloader_path.clone();
         let deno_path = downloader_path.clone();
 
-        let active_screen = Screen::Update;
-       
+        let active_screen = if exe_folder_path == downloader_path {
+            Screen::Home
+        } else {
+            Screen::Install
+        };
+      
         Self {
             languages: TextDatabase::default(),
-            active_language: Language::English,
+            active_language,
 
             downloads_path: PathBuf::from(&downloads),
             appdata_path,
@@ -104,22 +130,12 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        container("").into()
+        container("HEllo").into()
     }
 
     fn translation(&self) -> &Translation {
         self.languages.get_translation(self.active_language)
     }
-}
-
-async fn routine() {
-    tokio::process::Command::new(which::which("powershell").unwrap())
-        .arg("-c")
-        .arg("Wait-Process -Name yt_downloader; $WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut(\"$Home\\Desktop\\YT Downloader.lnk\"); $Shortcut.TargetPath = \"$Home\\Dev\\Projects\\yt-downloader\\target\\debug\\yt_downloader.exe\"; $Shortcut.Save(); ")
-        .spawn()
-        .expect("Failed to spawn")
-        .wait()
-        .await.unwrap();
 }
 
 #[derive(Clone)]

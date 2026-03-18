@@ -1,7 +1,34 @@
 // Utilities for windows
 
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::PCSTR;
+use windows::Win32::Globalization::*;
+use windows::core::{PCSTR, PWSTR};
+
+use crate::lang::Language;
+
+pub fn get_user_language() -> anyhow::Result<Language> {
+    unsafe {
+        let mut n_languages = 0u32;
+        let mut buf_size = 0u32;
+
+        GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut n_languages, None, &mut buf_size)?;
+
+        let mut buf = Vec::with_capacity(buf_size as usize);
+        GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut n_languages, Some(PWSTR(buf.as_mut_ptr())), &mut buf_size)?;
+
+        buf.set_len(buf_size as usize);
+        let names = OsString::from_wide(&buf).into_string().unwrap(); // Should not fail at this point
+
+        if names.contains("de") {
+            Ok(Language::German)
+        } else {
+            Ok(Language::English)
+        }
+    }
+}
 
 pub fn error_dialog(text: &str) {
     unsafe {
