@@ -26,6 +26,30 @@ pub enum Error {
 
     #[error("failed to spawn powershell instance")]
     SpawnPowershellCommandFailed(Arc<std::io::Error>),
+    
+    #[error("failed to open registry key")]
+    OpenRegistryKeyFailed(windows_result::Error),
+
+    #[error("failed to query the theme from the registry")]
+    QueryThemeFailed(windows_result::Error),
+}
+
+pub fn get_user_theme() -> Result<iced::Theme> {
+    let key = windows_registry::CURRENT_USER
+        .open(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize").map_err(
+            Error::OpenRegistryKeyFailed
+        )?;
+
+    let light_theme = key
+        .get_u32("AppsUseLightTheme").map_err(
+            Error::QueryThemeFailed
+        )?;
+
+    if light_theme == 1 {
+        Ok(iced::Theme::Light)
+    } else {
+        Ok(iced::Theme::Dark)
+    }
 }
 
 pub fn get_user_language() -> Result<Language> {

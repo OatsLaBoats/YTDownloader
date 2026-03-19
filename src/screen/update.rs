@@ -8,9 +8,13 @@ use iced::widget::*;
 use reqwest::Client;
 use thiserror::Error;
 
+use tracing::info;
+
 use crate::Paths;
 use crate::github;
 use crate::lang::Translation;
+use crate::command::yt_dlp;
+use crate::command::deno;
 
 #[derive(Clone)]
 pub enum UpdateKind {
@@ -33,17 +37,18 @@ impl Screen {
     ) -> Self {
         Self {
             paths,
-
             kind: UpdateKind::Normal,
             progess: 0.0,
         }
     }
 
     pub fn start(
-        &self,
+        &mut self,
         kind: UpdateKind,
         client: &Client,
     ) -> Task<Message> {
+        self.kind = kind;
+
         Task::sip(
             download_assets(
                 Arc::clone(&self.paths),
@@ -112,34 +117,33 @@ fn download_assets(paths: Arc<Paths>, client: Client) -> impl Straw<(), Download
             )?;
         }
 
-        let latest_yt_dlp_release = github::get_latest_release(
+        let latest_yt_dlp_release = github::query_latest_release(
             client.clone(),
             github::YT_DLP_OWNER,
             github::YT_DLP_REPO,
         ).await.map_err(DownloadError::QueryYtDlpLatestReleaseFailed)?;
-
-        tracing::info!("Latest yt-dlp version: {}", latest_yt_dlp_release.tag_name);
+        info!("Latest yt-dlp version: {}", latest_yt_dlp_release.tag_name);
 
         let mut update_yt_dlp = true;
-        if !paths.yt_dlp_exe.exists() {
+        if paths.yt_dlp_exe.exists() {
             progress.send(DownloadProgress::QueryingVersion(Asset::YtDlp)).await;
 
-            // TODO: Create an api that interacts with all these processes and parses output instead of doing that here
-            let result = tokio::process::Command::new("yt-dlp")
-                .kill_on_drop(true)
-                .arg("--version")
-                .output().await.map_err(|_|
-                    DownloadError::QueryLocalYtDlpVersionFailed,
-                )?
-                .stdout;
-
-            let current_version = str::from_utf8(&result).unwrap();
-            tracing::info!("Installed yt-dlp version: {current_version}");
-
-            if current_version.contains(&latest_yt_dlp_release.tag_name) {
-                tracing::info!("No need for update");
+            let current_yt_dlp_version = yt_dlp::query_version(&paths.yt_dlp_exe).await
+                .map_err(DownloadError::QueryLocalYtDlpVersionFailed)?;
+            info!("Installed yt-dlp version: {current_yt_dlp_version}");
+            
+            if current_yt_dlp_version == latest_yt_dlp_release.tag_name {
                 update_yt_dlp = false;
             }
+        }
+
+        let mut update_deno = true;
+        if paths.deno_exe.exists() {
+            progress.send(DownloadProgress::QueryingVersion(Asset::Deno)).await;
+            
+            let current_deno_version = deno::query_version(&paths.deno_exe).await
+                .map_err(DownloadError::QueryLocalDenoVersionFailed)?;
+            info!("Installed deno version: {current_deno_version}");
         }
         
         Ok(())
@@ -147,21 +151,21 @@ fn download_assets(paths: Arc<Paths>, client: Client) -> impl Straw<(), Download
 }
 
 #[derive(Clone, Debug)]
-enum DownloadProgress {
+pub enum DownloadProgress {
     Downloading(Asset, f32),
     Extracting(Asset),
     QueryingVersion(Asset),
 }
 
 #[derive(Debug, Clone)]
-enum Asset {
+pub enum Asset {
     YtDlp,
     Ffmpeg,
     Deno,
 }
 
 #[derive(Error, Debug, Clone)]
-enum DownloadError {
+pub enum DownloadError {
     #[error("failed to create \"%LocalAppData%/YT Downloader\" directory")]
     DownloaderDirectoryCreationFailed(Arc<std::io::Error>),
 
@@ -169,8 +173,11 @@ enum DownloadError {
     BinDirectoryCreationFailed(Arc<std::io::Error>),
 
     #[error("failed to get the latest release for yt-dlp from the github api")]
-    QueryYtDlpLatestReleaseFailed(github::GithubError),
+    QueryYtDlpLatestReleaseFailed(github::Error),
 
     #[error("failed to get the installed yt-dlp version")]
-    QueryLocalYtDlpVersionFailed,
+    QueryLocalYtDlpVersionFailed(yt_dlp::Error),
+
+    #[error("failed to get the installed deno version")]
+    QueryLocalDenoVersionFailed(deno::Error),
 }

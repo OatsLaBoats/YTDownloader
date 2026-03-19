@@ -1,8 +1,9 @@
 #![windows_subsystem = "console"]
 
+use std::io::Write;
 use std::sync::Arc;
 
-use tracing::error;
+use tracing::{error, info};
 use iced::{Element, Task};
 
 use yt_downloader::screen::update::UpdateKind;
@@ -14,6 +15,7 @@ use yt_downloader::platform::windows::*;
 
 // TODO: Write the settings file out when settings change
 // TODO: Check versions of tools and download from github
+// TODO: Apply the settings before launching the app
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -32,6 +34,7 @@ fn main() -> iced::Result {
             ..Default::default()
         })
         .title("YT Downloader")
+        .theme(App::theme)
         .run()
 }
 
@@ -41,8 +44,8 @@ struct App {
     paths: Arc<Paths>,
     settings: yt_downloader::Settings,
     active_screen: Screen,
-
     http_client: reqwest::Client,
+    default_theme: iced::Theme,
 }
 
 impl App {
@@ -184,9 +187,31 @@ impl App {
                     },
                 }
             }
+        } else if paths.downloader_dir.exists() {
+            match serde_json::to_string(&settings) {
+                Ok(v) => {
+                    match std::fs::File::create(&paths.settings_file) {
+                        Ok(mut file) => {
+                            let _ = file.write_all(v.as_bytes())
+                                .map_err(|e| error!("Failed to write settings file {e}"));
+                        },
+                        Err(e) => error!("Failed to create settings.json {e}"),
+                    }
+                },
+                Err(e) => error!("Failed to convert settings to json {e}"),
+            }
         }
 
-        tracing::info!("{settings:?}");
+        let default_theme = match get_user_theme() {
+            Ok(v) => {
+                info!("Default theme {v:?}");
+                v
+            },
+            Err(e) => {
+                error!("Failed to find default theme {e}");
+                iced::Theme::Dark
+            },
+        };
 
         let mut languages = TextDatabase::default();
         languages.current_language = settings.ui_language;
@@ -196,7 +221,7 @@ impl App {
 
         // Set the default screen and launch the start task to begin updating
         if exe_dir_path != paths.downloader_dir {
-            let sc = screen::update::Screen::new(Arc::clone(&paths));
+            let mut sc = screen::update::Screen::new(Arc::clone(&paths));
             task = sc.start(UpdateKind::Install, &http_client).map(Message::UpdateScreenMessage);
             active_screen = Screen::Update(sc);
         } else {
@@ -211,6 +236,7 @@ impl App {
                 settings,
                 active_screen,
                 http_client,
+                default_theme,
             },
 
             task,
@@ -243,6 +269,14 @@ impl App {
             Screen::Home => {
                 todo!()
             },
+        }
+    }
+
+    fn theme(&self) -> iced::Theme {
+        match self.settings.ui_theme {
+            Theme::Dark => iced::Theme::Dark,
+            Theme::Light => iced::Theme::Light,
+            Theme::Auto => self.default_theme.clone(),
         }
     }
 }
