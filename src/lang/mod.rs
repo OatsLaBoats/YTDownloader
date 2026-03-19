@@ -30,7 +30,7 @@ impl Default for TextDatabase {
 
 impl TextDatabase {
     pub fn translation(&self) -> &Translation {
-        self.translations.get(&self.current_language).unwrap()
+        self.translations.get(&self.current_language).unwrap() // Never panics
     }
 }
 

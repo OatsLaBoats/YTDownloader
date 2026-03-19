@@ -14,8 +14,6 @@ use yt_downloader::platform::windows::*;
 
 // TODO: Write the settings file out when settings change
 // TODO: Check versions of tools and download from github
- 
-// TODO: Redo error handling after the app if done, Remove anyhow
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -110,7 +108,7 @@ impl App {
         };
 
         let mut downloader_dir = appdata_dir.clone();
-        downloader_dir.push("YTDownloader");
+        downloader_dir.push("YT Downloader");
 
         let mut bin_dir = downloader_dir.clone();
         bin_dir.push("bin");
@@ -163,6 +161,7 @@ impl App {
         let mut settings = Settings {
             ui_language: user_language,
             ui_theme: Theme::Auto,
+            download_dir: paths.downloads_dir.to_string_lossy().to_string(),
         };
 
         // Read the settings file if they exist

@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use thiserror::Error;
 use iced::alignment::Horizontal;
 use iced::task::Straw;
 use iced::task::sipper;
-use iced::*;
+use iced::{Task, Element};
 use iced::widget::*;
-
 use reqwest::Client;
+use thiserror::Error;
 
 use crate::Paths;
 use crate::github;
@@ -51,9 +50,7 @@ impl Screen {
                 client.clone(),
             ),
             Message::Working,
-           |x| {
-               Message::Finished
-           },
+            Message::Finished,
         )
     }
 
@@ -91,7 +88,7 @@ impl Screen {
 #[derive(Clone)]
 pub enum Message {
     Working(DownloadProgress),
-    Finished,
+    Finished(Result<(), DownloadError>),
 }
 
 pub enum Action {
@@ -104,32 +101,37 @@ pub enum Action {
 fn download_assets(paths: Arc<Paths>, client: Client) -> impl Straw<(), DownloadProgress, DownloadError> {
     sipper(async move |mut progress| {
         if !paths.downloader_dir.exists() {
-            tokio::fs::create_dir(&paths.downloader_dir).await.unwrap();
+            tokio::fs::create_dir(&paths.downloader_dir).await.map_err(|e|
+                DownloadError::DownloaderDirectoryCreationFailed(Arc::new(e)),
+            )?;
         }
 
         if !paths.bin_dir.exists() {
-            tokio::fs::create_dir(&paths.bin_dir).await.unwrap();
+            tokio::fs::create_dir(&paths.bin_dir).await.map_err(|e|
+                DownloadError::BinDirectoryCreationFailed(Arc::new(e)),
+            )?;
         }
 
-        let latest_yt_dlp_release = github::get_latest_yt_dlp_release(client.clone()).await?;
+        let latest_yt_dlp_release = github::get_latest_release(
+            client.clone(),
+            github::YT_DLP_OWNER,
+            github::YT_DLP_REPO,
+        ).await.map_err(DownloadError::QueryYtDlpLatestReleaseFailed)?;
+
         tracing::info!("Latest yt-dlp version: {}", latest_yt_dlp_release.tag_name);
 
         let mut update_yt_dlp = true;
         if !paths.yt_dlp_exe.exists() {
             progress.send(DownloadProgress::QueryingVersion(Asset::YtDlp)).await;
 
+            // TODO: Create an api that interacts with all these processes and parses output instead of doing that here
             let result = tokio::process::Command::new("yt-dlp")
                 .kill_on_drop(true)
                 .arg("--version")
-                .output().await;
-
-            let result = match result {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::error!("yt-dlp not found {e}");
-                    return Err(DownloadError::Other);
-                },
-            }.stdout;
+                .output().await.map_err(|_|
+                    DownloadError::QueryLocalYtDlpVersionFailed,
+                )?
+                .stdout;
 
             let current_version = str::from_utf8(&result).unwrap();
             tracing::info!("Installed yt-dlp version: {current_version}");
@@ -158,14 +160,17 @@ enum Asset {
     Deno,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 enum DownloadError {
-    AnyhowError(Arc<anyhow::Error>),
-    Other,
-}
+    #[error("failed to create \"%LocalAppData%/YT Downloader\" directory")]
+    DownloaderDirectoryCreationFailed(Arc<std::io::Error>),
 
-impl From<anyhow::Error> for DownloadError {
-    fn from(value: anyhow::Error) -> Self {
-        DownloadError::AnyhowError(Arc::new(value))
-    }
+    #[error("failed to create \"%LocalAppData%/YT Downloader/bin\" directory")]
+    BinDirectoryCreationFailed(Arc<std::io::Error>),
+
+    #[error("failed to get the latest release for yt-dlp from the github api")]
+    QueryYtDlpLatestReleaseFailed(github::GithubError),
+
+    #[error("failed to get the installed yt-dlp version")]
+    QueryLocalYtDlpVersionFailed,
 }

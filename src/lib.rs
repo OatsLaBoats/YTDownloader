@@ -5,6 +5,7 @@ pub mod platform;
 pub mod screen;
 pub mod lang;
 pub mod github;
+pub mod command;
 
 use lang::Language;
 
@@ -21,6 +22,7 @@ pub enum Theme {
 pub struct Settings {
     pub ui_language: Language,
     pub ui_theme: Theme,
+    pub download_dir: String,
 }
 
 pub struct Paths {

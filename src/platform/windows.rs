@@ -2,26 +2,50 @@
 
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
-use std::path::Path;
+use std::sync::Arc;
 
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Globalization::*;
 use windows::core::{PCSTR, PWSTR};
+use thiserror::Error;
 
 use crate::lang::Language;
 
-pub fn get_user_language() -> anyhow::Result<Language> {
+type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Error, Debug, Clone)]
+pub enum Error {
+    #[error("invocation to GetUserPreferredUILanguages failed")]
+    GetUserPreferredLanguageFailed(Arc<windows::core::Error>),
+
+    #[error("failed to convert OsString to rust String")]
+    ConvertOsStringToUTF8Failed,
+
+    #[error("failed to get the yt_downloader executable path")]
+    GetExePathFailed(Arc<std::io::Error>),
+
+    #[error("failed to spawn powershell instance")]
+    SpawnPowershellCommandFailed(Arc<std::io::Error>),
+}
+
+pub fn get_user_language() -> Result<Language> {
     unsafe {
         let mut n_languages = 0u32;
         let mut buf_size = 0u32;
 
-        GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut n_languages, None, &mut buf_size)?;
+        GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut n_languages, None, &mut buf_size).map_err(|e|
+            Error::GetUserPreferredLanguageFailed(Arc::new(e))
+        )?;
 
         let mut buf = Vec::with_capacity(buf_size as usize);
-        GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut n_languages, Some(PWSTR(buf.as_mut_ptr())), &mut buf_size)?;
+        GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &mut n_languages, Some(PWSTR(buf.as_mut_ptr())), &mut buf_size).map_err(|e|
+            Error::GetUserPreferredLanguageFailed(Arc::new(e))
+        )?;
 
         buf.set_len(buf_size as usize);
-        let names = OsString::from_wide(&buf).into_string().unwrap(); // Should not fail at this point
+        let names = OsString::from_wide(&buf).into_string().map_err(|_|
+            Error::ConvertOsStringToUTF8Failed
+        )?;
 
         if names.contains("de") {
             Ok(Language::German)
@@ -42,9 +66,14 @@ pub fn error_dialog(text: &str) {
 // 2. Moves the executable to it's AppData/Local location.
 // 3. Creates a shortcut on the desktop.
 // 4. Relaunch the app.
-pub async fn finish_install_process() -> anyhow::Result<()> {
-    let exe_path = std::env::current_exe()?;
-    let exe = exe_path.to_string_lossy();
+pub async fn finish_install_process() -> Result<()> {
+    let exe_path = std::env::current_exe().map_err(|e|
+        Error::GetExePathFailed(Arc::new(e))
+    )?;
+
+    let exe = exe_path.into_os_string().into_string().map_err(|_|
+        Error::ConvertOsStringToUTF8Failed
+    )?;
 
     tokio::process::Command::new("powershell")
         .arg("-c")
@@ -57,13 +86,18 @@ pub async fn finish_install_process() -> anyhow::Result<()> {
                 $Shortcut.Save(); \
                 Start-Process -FilePath \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
             ", exe))
-        .spawn()?
-        .wait().await?;
+        .spawn().map_err(|e|
+            Error::SpawnPowershellCommandFailed(Arc::new(e))
+        )?
+        .wait().await.map_err(|e|
+            Error::SpawnPowershellCommandFailed(Arc::new(e))
+        )?;
+
     Ok(())
 }
 
 // The only difference is the removal of the old executable
-pub async fn finish_update_process() -> anyhow::Result<()> {
+pub async fn finish_update_process() -> Result<()> {
     tokio::process::Command::new("powershell")
         .arg("-c")
         .arg(" \
@@ -76,8 +110,13 @@ pub async fn finish_update_process() -> anyhow::Result<()> {
                 $Shortcut.Save(); \
                 Start-Process -FilePath \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
             ")
-        .spawn()?
-        .wait().await?;
+        .spawn().map_err(|e|
+            Error::SpawnPowershellCommandFailed(Arc::new(e))
+        )?
+        .wait().await.map_err(|e|
+            Error::SpawnPowershellCommandFailed(Arc::new(e))
+        )?;
+
     Ok(())
 }
 
