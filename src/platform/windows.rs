@@ -2,6 +2,7 @@
 
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
+use std::path::Path;
 
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Globalization::*;
@@ -41,9 +42,10 @@ pub fn error_dialog(text: &str) {
 // 2. Moves the executable to it's AppData/Local location.
 // 3. Creates a shortcut on the desktop.
 // 4. Relaunch the app.
-pub async fn finish_update_process() -> anyhow::Result<()> {
+pub async fn finish_install_process() -> anyhow::Result<()> {
     let exe_path = std::env::current_exe()?;
     let exe = exe_path.to_string_lossy();
+
     tokio::process::Command::new("powershell")
         .arg("-c")
         .arg(format!(" \
@@ -59,3 +61,24 @@ pub async fn finish_update_process() -> anyhow::Result<()> {
         .wait().await?;
     Ok(())
 }
+
+// The only difference is the removal of the old executable
+pub async fn finish_update_process() -> anyhow::Result<()> {
+    tokio::process::Command::new("powershell")
+        .arg("-c")
+        .arg(" \
+                Wait-Process -Name yt_downloader; \
+                Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
+                Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\yt_downloader.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\\"; \
+                $WshShell = New-Object -ComObject WScript.Shell; \
+                $Shortcut = $WshShell.CreateShortcut(\"$HOME\\Desktop\\YT Downloader.lnk\"); \
+                $Shortcut.TargetPath = \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
+                $Shortcut.Save(); \
+                Start-Process -FilePath \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
+            ")
+        .spawn()?
+        .wait().await?;
+    Ok(())
+}
+
+// TODO: Uninstall script

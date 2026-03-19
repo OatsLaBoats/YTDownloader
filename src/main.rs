@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::error;
 use iced::{Element, Task};
 
+use yt_downloader::screen::update::UpdateKind;
 use yt_downloader::*;
 use yt_downloader::lang::*;
 use yt_downloader::screen::Screen;
@@ -13,10 +14,12 @@ use yt_downloader::platform::windows::*;
 
 // TODO: Write the settings file out when settings change
 // TODO: Check versions of tools and download from github
+ 
+// TODO: Redo error handling after the app if done, Remove anyhow
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(tracing::Level::TRACE)
+        .with_max_level(tracing::Level::INFO)
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)
@@ -25,7 +28,7 @@ fn main() -> iced::Result {
     let icon_data = include_bytes!("../res/YTDownloader.png");
     let icon = iced::window::icon::from_file_data(icon_data, None).ok();
     
-    iced::application(App::default, App::update, App::view)
+    iced::application(App::new, App::update, App::view)
         .window(iced::window::Settings {
             icon: icon,
             ..Default::default()
@@ -40,11 +43,13 @@ struct App {
     paths: Arc<Paths>,
     settings: yt_downloader::Settings,
     active_screen: Screen,
+
+    http_client: reqwest::Client,
 }
 
-impl Default for App {
+impl App {
     // NOTE: During initialization all errors are fatal. We need to make sure they are kept to a minimum.
-    fn default() -> Self {
+    fn new() -> (Self, Task<Message>) {
         // Ensure we can run the install script. In the future maybe support other ways like bash or cmd.
         if let Err(e) = which::which("powershell") {
             error!("Failed to find powershell executable {}", e);
@@ -83,6 +88,16 @@ impl Default for App {
             error!("Failed to get the path to the folder containing the installer");
             error_dialog("Failed to get the path to the folder containing the installer");
             std::process::exit(-1);
+        };
+
+        
+        let http_client = match reqwest::Client::builder().build() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to initialize HTTP client {e}");
+                error_dialog("Failed to initialize HTTP client");
+                std::process::exit(-1);
+            },
         };
 
         // Non fatal
@@ -177,33 +192,40 @@ impl Default for App {
         let mut languages = TextDatabase::default();
         languages.current_language = settings.ui_language;
         
-        let active_screen = if exe_dir_path == paths.downloads_dir {
-            Screen::Home
-        } else {
-            Screen::Update(screen::update::Screen::new(
-                true,
-                Arc::clone(&paths),
-            ))
-        };
-      
-        Self {
-            languages,
-            paths,
-            settings,
-            active_screen,
-        }
-    }
-}
+        let active_screen;
+        let task;
 
-impl App {
+        // Set the default screen and launch the start task to begin updating
+        if exe_dir_path != paths.downloader_dir {
+            let sc = screen::update::Screen::new(Arc::clone(&paths));
+            task = sc.start(UpdateKind::Install, &http_client).map(Message::UpdateScreenMessage);
+            active_screen = Screen::Update(sc);
+        } else {
+            active_screen = Screen::Home;
+            task = Task::none();
+        }
+
+        (
+            Self {
+                languages,
+                paths,
+                settings,
+                active_screen,
+                http_client,
+            },
+
+            task,
+        )
+    }    
+
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::UpdateScreen(message) => {
+            Message::UpdateScreenMessage(message) => {
                 if let Screen::Update(update_screen) = &mut self.active_screen {
                     let action = update_screen.update(message);
                     match action {
                         screen::update::Action::None => Task::none(),
-                        screen::update::Action::Run(task) => task.map(Message::UpdateScreen),
+                        screen::update::Action::Run(task) => task.map(Message::UpdateScreenMessage),
                     }
                 } else {
                     Task::none()
@@ -216,7 +238,7 @@ impl App {
         match &self.active_screen {
             Screen::Update(update_screen) => {
                 update_screen.view(self.languages.translation())
-                    .map(Message::UpdateScreen)
+                    .map(Message::UpdateScreenMessage)
             },
 
             Screen::Home => {
@@ -228,5 +250,5 @@ impl App {
 
 #[derive(Clone)]
 enum Message {
-    UpdateScreen(screen::update::Message),
+    UpdateScreenMessage(screen::update::Message),
 }
