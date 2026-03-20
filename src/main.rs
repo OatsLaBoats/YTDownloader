@@ -14,8 +14,6 @@ use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
 // TODO: Write the settings file out when settings change
-// TODO: Check versions of tools and download from github
-// TODO: Apply the settings before launching the app
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -38,6 +36,8 @@ fn main() -> iced::Result {
         .run()
 }
 
+// TODO: Wrap the AppState into an optional instead of using the default for cleaner exit
+ 
 // Holds the state for the whole app.
 struct App {
     languages: TextDatabase,
@@ -48,6 +48,20 @@ struct App {
     default_theme: iced::Theme,
 }
 
+// NOTE: DO NOT USE THIS OUTSIDE OF EARLY RETURN ERROR HANDLING
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            languages: TextDatabase::default(),
+            paths: Arc::new(Paths::default()),
+            settings: yt_downloader::Settings::default(),
+            active_screen: Screen::default(),
+            http_client: reqwest::Client::default(),
+            default_theme: iced::Theme::Dark,
+        }
+    }
+}
+
 impl App {
     // NOTE: During initialization all errors are fatal. We need to make sure they are kept to a minimum.
     fn new() -> (Self, Task<Message>) {
@@ -55,25 +69,25 @@ impl App {
         if let Err(e) = which::which("powershell") {
             error!("Failed to find powershell executable {}", e);
             error_dialog("Failed to find powershell executable");
-            std::process::exit(-1);
+            return (Self::default(), iced::exit());
         }
         
         let Some(downloads_dir) = dirs::download_dir() else {
             error!("Failed to find Downloads Folder");
             error_dialog("Failed to find Downloads folder.");
-            std::process::exit(-1);
+            return (Self::default(), iced::exit());
         };
         
         let Some(appdata_dir) = dirs::data_local_dir() else {
             error!("Failed to find AppData/Local");
             error_dialog("Failed to find AppData/Local.");
-            std::process::exit(-1);
+            return (Self::default(), iced::exit());
         };
 
         let Some(desktop_dir_path) = dirs::desktop_dir() else {
             error!("Failed to find Desktop directory");
             error_dialog("Failed to find Desktop directory");
-            std::process::exit(-1);
+            return (Self::default(), iced::exit());
         };
 
         let exe_path = match std::env::current_exe() {
@@ -81,14 +95,14 @@ impl App {
             Err(e) => {
                 error!("Failed to find the path of the executable {}", e);
                 error_dialog("Failed to find the path of the executable.");
-                std::process::exit(-1);
+                return (Self::default(), iced::exit());
             },
         };
 
         let Some(exe_dir_path) = exe_path.parent() else {
             error!("Failed to get the path to the folder containing the installer");
             error_dialog("Failed to get the path to the folder containing the installer");
-            std::process::exit(-1);
+            return (Self::default(), iced::exit());
         };
 
         
@@ -97,7 +111,7 @@ impl App {
             Err(e) => {
                 error!("Failed to initialize HTTP client {e}");
                 error_dialog("Failed to initialize HTTP client");
-                std::process::exit(-1);
+                return (Self::default(), iced::exit());
             },
         };
 
@@ -249,8 +263,10 @@ impl App {
                 if let Screen::Update(update_screen) = &mut self.active_screen {
                     let action = update_screen.update(message);
                     match action {
+                        screen::update::Action::Done(None) => iced::exit(),
+                        screen::update::Action::Exit => iced::exit(),
+                        screen::update::Action::Done(Some(task)) => task.map(Message::UpdateScreenMessage),
                         screen::update::Action::None => Task::none(),
-                        screen::update::Action::Run(task) => task.map(Message::UpdateScreenMessage),
                     }
                 } else {
                     Task::none()
@@ -281,7 +297,7 @@ impl App {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Message {
     UpdateScreenMessage(screen::update::Message),
 }

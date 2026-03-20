@@ -4,8 +4,9 @@ use serde::{Serialize, Deserialize};
 mod english;
 mod german;
 
-#[derive(Hash, Eq, PartialEq, Clone, Copy, Serialize, Deserialize, Debug)]
+#[derive(Default, Hash, Eq, PartialEq, Clone, Copy, Serialize, Deserialize, Debug)]
 pub enum Language {
+    #[default]
     English,
     German,
 }
@@ -40,5 +41,6 @@ type Text = &'static str;
 pub struct Translation {
     pub update_screen_install_label: Text,
     pub update_screen_update_label: Text,
+   
     pub context_menu_paste: Text,
 }

@@ -1,17 +1,18 @@
 // Utilities for windows
 
-use std::ffi::OsString;
+use std::ffi::{CString, OsString};
 use std::os::windows::ffi::OsStringExt;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Globalization::*;
-use windows::core::{PCSTR, PWSTR};
+use windows::core::{PCSTR, PWSTR, s};
 use thiserror::Error;
 
 use crate::lang::Language;
 
-type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
@@ -80,8 +81,9 @@ pub fn get_user_language() -> Result<Language> {
 }
 
 pub fn error_dialog(text: &str) {
+    let message = CString::new(text).unwrap();
     unsafe {
-        MessageBoxA(None, PCSTR(text.as_ptr()), PCSTR::null(), MB_OK | MB_ICONERROR);
+        MessageBoxA(None, PCSTR(message.as_ptr().cast()), s!("Error"), MB_OK | MB_ICONERROR | MB_DEFAULT_DESKTOP_ONLY);
     }
 }
 
@@ -112,9 +114,6 @@ pub async fn finish_install_process() -> Result<()> {
             ", exe))
         .spawn().map_err(|e|
             Error::SpawnPowershellCommandFailed(Arc::new(e))
-        )?
-        .wait().await.map_err(|e|
-            Error::SpawnPowershellCommandFailed(Arc::new(e))
         )?;
 
     Ok(())
@@ -135,9 +134,6 @@ pub async fn finish_update_process() -> Result<()> {
                 Start-Process -FilePath \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
             ")
         .spawn().map_err(|e|
-            Error::SpawnPowershellCommandFailed(Arc::new(e))
-        )?
-        .wait().await.map_err(|e|
             Error::SpawnPowershellCommandFailed(Arc::new(e))
         )?;
 

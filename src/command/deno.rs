@@ -23,7 +23,19 @@ pub async fn query_version(deno_path: impl AsRef<OsStr>) -> Result<String> {
         )?
         .stdout;
 
-    let version_slice = str::from_utf8(&result[5..10]).map_err(|_|
+    let mut end_index = 10;
+
+    // Handle the minor version being in the double digits
+    if (result[end_index - 2] as char).is_ascii_digit() {
+        end_index += 1;
+    }
+
+    // Handle the patch version being in the double digits
+    if (result[end_index] as char).is_ascii_digit() {
+        end_index += 1;
+    }
+
+    let version_slice = str::from_utf8(&result[5..end_index]).map_err(|_|
         Error::ConvertBytesToUTF8Failed
     )?;
 

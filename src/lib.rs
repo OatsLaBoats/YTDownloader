@@ -6,25 +6,29 @@ pub mod screen;
 pub mod lang;
 pub mod github;
 pub mod command;
+pub mod widget;
 
 use lang::Language;
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub enum Theme {
     Dark,
     Light,
+
+    #[default]
     Auto,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct Settings {
     pub ui_language: Language,
     pub ui_theme: Theme,
     pub download_dir: String,
 }
 
+#[derive(Default)]
 pub struct Paths {
     pub downloads_dir: PathBuf,
     pub appdata_dir: PathBuf,

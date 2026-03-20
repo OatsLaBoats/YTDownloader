@@ -4925,6 +4925,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -6096,6 +6097,7 @@ dependencies = [
  "futures-util",
  "iced",
  "iced_aw",
+ "lyon_algorithms",
  "reqwest",
  "rfd",
  "serde",
@@ -6104,6 +6106,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "which",
  "windows 0.62.2",
  "windows-registry",
