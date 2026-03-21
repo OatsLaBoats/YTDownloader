@@ -36,10 +36,42 @@ fn main() -> iced::Result {
         .run()
 }
 
-// TODO: Wrap the AppState into an optional instead of using the default for cleaner exit
+#[derive(Default)]
+struct App(Option<State>);
+
+// Wrapper around state because it might fail on initialization
+impl App {
+    fn new() -> (Self, Task<Message>) {
+        match State::new() {
+            Some((s, t)) => (App(Some(s)), t),
+            None => (App(None), iced::exit()),
+        }
+    }
+
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match &mut self.0 {
+            Some(v) => v.update(message),
+            None => iced::exit(),
+        }
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        match &self.0 {
+            Some(v) => v.view(),
+            None => iced::widget::container("").into(),
+        }
+    }
+
+    fn theme(&self) -> iced::Theme {
+        match &self.0 {
+            Some(v) => v.theme(),
+            None => iced::Theme::Dark,
+        }
+    }
+}
  
 // Holds the state for the whole app.
-struct App {
+struct State {
     languages: TextDatabase,
     paths: Arc<Paths>,
     settings: yt_downloader::Settings,
@@ -48,46 +80,32 @@ struct App {
     default_theme: iced::Theme,
 }
 
-// NOTE: DO NOT USE THIS OUTSIDE OF EARLY RETURN ERROR HANDLING
-impl Default for App {
-    fn default() -> Self {
-        Self {
-            languages: TextDatabase::default(),
-            paths: Arc::new(Paths::default()),
-            settings: yt_downloader::Settings::default(),
-            active_screen: Screen::default(),
-            http_client: reqwest::Client::default(),
-            default_theme: iced::Theme::Dark,
-        }
-    }
-}
-
-impl App {
+impl State {
     // NOTE: During initialization all errors are fatal. We need to make sure they are kept to a minimum.
-    fn new() -> (Self, Task<Message>) {
+    fn new() -> Option<(Self, Task<Message>)> {
         // Ensure we can run the install script. In the future maybe support other ways like bash or cmd.
         if let Err(e) = which::which("powershell") {
             error!("Failed to find powershell executable {}", e);
             error_dialog("Failed to find powershell executable");
-            return (Self::default(), iced::exit());
+            return None;
         }
         
         let Some(downloads_dir) = dirs::download_dir() else {
             error!("Failed to find Downloads Folder");
             error_dialog("Failed to find Downloads folder.");
-            return (Self::default(), iced::exit());
+            return None;
         };
         
         let Some(appdata_dir) = dirs::data_local_dir() else {
             error!("Failed to find AppData/Local");
             error_dialog("Failed to find AppData/Local.");
-            return (Self::default(), iced::exit());
+            return None;
         };
 
         let Some(desktop_dir_path) = dirs::desktop_dir() else {
             error!("Failed to find Desktop directory");
             error_dialog("Failed to find Desktop directory");
-            return (Self::default(), iced::exit());
+            return None;
         };
 
         let exe_path = match std::env::current_exe() {
@@ -95,14 +113,14 @@ impl App {
             Err(e) => {
                 error!("Failed to find the path of the executable {}", e);
                 error_dialog("Failed to find the path of the executable.");
-                return (Self::default(), iced::exit());
+                return None;
             },
         };
 
         let Some(exe_dir_path) = exe_path.parent() else {
             error!("Failed to get the path to the folder containing the installer");
             error_dialog("Failed to get the path to the folder containing the installer");
-            return (Self::default(), iced::exit());
+            return None;
         };
 
         
@@ -111,7 +129,7 @@ impl App {
             Err(e) => {
                 error!("Failed to initialize HTTP client {e}");
                 error_dialog("Failed to initialize HTTP client");
-                return (Self::default(), iced::exit());
+                return None;
             },
         };
 
@@ -234,16 +252,25 @@ impl App {
         let task;
 
         // Set the default screen and launch the start task to begin updating
+        #[cfg(not(debug_assertions))]
         if exe_dir_path != paths.downloader_dir {
             let mut sc = screen::update::Screen::new(Arc::clone(&paths));
             task = sc.start(UpdateKind::Install, &http_client).map(Message::UpdateScreenMessage);
             active_screen = Screen::Update(sc);
         } else {
-            active_screen = Screen::Home;
-            task = Task::none();
+            let mut sc = screen::home::Screen::new(Arc::clone(&paths), settings.clone());
+            task = sc.start().map(Message::HomeScreenMessage);
+            active_screen = Screen::Home(sc);
         }
 
-        (
+        #[cfg(debug_assertions)]
+        {
+            let mut sc = screen::home::Screen::new(Arc::clone(&paths), settings.clone());
+            task = sc.start().map(Message::HomeScreenMessage);
+            active_screen = Screen::Home(sc);
+        }
+
+        Some((
             Self {
                 languages,
                 paths,
@@ -254,7 +281,7 @@ impl App {
             },
 
             task,
-        )
+        ))
     }    
 
     fn update(&mut self, message: Message) -> Task<Message> {
@@ -272,6 +299,17 @@ impl App {
                     Task::none()
                 }
             },
+
+            Message::HomeScreenMessage(message) => {
+                if let Screen::Home(home_screen) = &mut self.active_screen {
+                    let action = home_screen.update(message);
+                    match action {
+                        screen::home::Action::None => Task::none(),
+                    }
+                } else {
+                    Task::none()
+                }
+            }
         }
     }
 
@@ -282,8 +320,9 @@ impl App {
                     .map(Message::UpdateScreenMessage)
             },
 
-            Screen::Home => {
-                todo!()
+            Screen::Home(home_screen) => {
+                home_screen.view(self.languages.translation())
+                    .map(Message::HomeScreenMessage)
             },
         }
     }
@@ -300,4 +339,5 @@ impl App {
 #[derive(Clone, Debug)]
 enum Message {
     UpdateScreenMessage(screen::update::Message),
+    HomeScreenMessage(screen::home::Message),
 }

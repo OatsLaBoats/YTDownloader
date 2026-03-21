@@ -23,6 +23,7 @@ pub enum Theme {
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct Settings {
+    pub auto_updates: bool,
     pub ui_language: Language,
     pub ui_theme: Theme,
     pub download_dir: String,
