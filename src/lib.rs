@@ -12,13 +12,25 @@ use lang::Language;
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Theme {
     Dark,
     Light,
 
     #[default]
     Auto,
+}
+
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Theme::Dark => "Dark",
+            Theme::Light => "Light",
+            Theme::Auto => "Auto",
+        };
+
+        write!(f, "{s}")
+    }
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]

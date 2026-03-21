@@ -53,7 +53,7 @@ impl Screen {
             kind: UpdateKind::Normal,
             progess: 0.0,
             current_asset: Asset::YtDlp,
-            spinner: false,
+            spinner: true,
         }
     }
 
@@ -78,7 +78,6 @@ impl Screen {
         &mut self,
         message: Message,
     ) -> Action {
-        info!("msg: {message:?}");
         match message {
             Message::ScriptLaunched(r) => {
                 let _ = r.inspect_err(|e| {
@@ -187,8 +186,8 @@ impl Screen {
     
     pub fn view(&self, translation: &Translation) -> Element<'_, Message> {
         let label = match self.kind {
-            UpdateKind::Install => translation.update_screen_install_label,
-            UpdateKind::Normal => translation.update_screen_update_label,
+            UpdateKind::Install => translation.update_screen_caption_install,
+            UpdateKind::Normal => translation.update_screen_caption_update,
         };
 
         let asset = match self.current_asset {

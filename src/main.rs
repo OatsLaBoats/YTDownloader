@@ -3,17 +3,23 @@
 use std::io::Write;
 use std::sync::Arc;
 
+use tokio::io::AsyncWriteExt;
 use tracing::{error, info};
 use iced::{Element, Task};
 
-use yt_downloader::screen::update::UpdateKind;
 use yt_downloader::*;
 use yt_downloader::lang::*;
 use yt_downloader::screen::Screen;
+use yt_downloader::screen::update::UpdateKind;
 use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
 // TODO: Write the settings file out when settings change
+// TODO: Settings migration mechanism for when settings change
+// TODO: Check for main executable update
+// TODO: Imporve logging with tags
+// TODO: Add tooltips
+// TODO: Maybe log the errors inside the async functions instead of returning them outside
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -194,6 +200,7 @@ impl State {
 
 
         let mut settings = Settings {
+            auto_updates: true,
             ui_language: user_language,
             ui_theme: Theme::Auto,
             download_dir: paths.downloads_dir.to_string_lossy().to_string(),
@@ -259,14 +266,14 @@ impl State {
             active_screen = Screen::Update(sc);
         } else {
             let mut sc = screen::home::Screen::new(Arc::clone(&paths), settings.clone());
-            task = sc.start().map(Message::HomeScreenMessage);
+            task = sc.start(&http_client).map(Message::HomeScreenMessage);
             active_screen = Screen::Home(sc);
         }
 
         #[cfg(debug_assertions)]
         {
             let mut sc = screen::home::Screen::new(Arc::clone(&paths), settings.clone());
-            task = sc.start().map(Message::HomeScreenMessage);
+            task = sc.start(&http_client).map(Message::HomeScreenMessage);
             active_screen = Screen::Home(sc);
         }
 
@@ -286,6 +293,8 @@ impl State {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::SaveSettings(_) => Task::none(),
+            
             Message::UpdateScreenMessage(message) => {
                 if let Screen::Update(update_screen) = &mut self.active_screen {
                     let action = update_screen.update(message);
@@ -304,6 +313,24 @@ impl State {
                 if let Screen::Home(home_screen) = &mut self.active_screen {
                     let action = home_screen.update(message);
                     match action {
+                        screen::home::Action::UpdateNeeded => {
+                            let mut sc = screen::update::Screen::new(Arc::clone(&self.paths));
+                            let task = sc.start(UpdateKind::Normal, &self.http_client);
+                            self.active_screen = Screen::Update(sc);
+                            task.map(Message::UpdateScreenMessage)
+                        },
+
+                        screen::home::Action::SettingsChanged(settings) => {
+                            self.settings = settings.clone();
+                            Task::perform(
+                                save_settings(
+                                    Arc::clone(&self.paths),
+                                    settings,
+                                ),
+                                Message::SaveSettings,
+                            )
+                        },
+
                         screen::home::Action::None => Task::none(),
                     }
                 } else {
@@ -330,9 +357,41 @@ impl State {
     fn theme(&self) -> iced::Theme {
         match self.settings.ui_theme {
             Theme::Dark => iced::Theme::Dark,
-            Theme::Light => iced::Theme::Light,
+            Theme::Light => iced::Theme::CatppuccinLatte,
             Theme::Auto => self.default_theme.clone(),
         }
+    }
+}
+
+async fn save_settings(paths: Arc<Paths>, settings: Settings) {
+    let Ok(json) = serde_json::to_string(&settings) else {
+        info!("SAVE_SETTINGS: failed to serialize settings");
+        return;
+    };
+
+    if paths.settings_file.exists() {
+        match tokio::fs::remove_file(&paths.settings_file).await {
+            Ok(_) => {},
+            Err(e) => {
+                info!("SAVE_SETTINGS: failed to delete \"settings.json\" -> {e}");
+                return;
+            },
+        }
+    }
+    
+    let mut file = match tokio::fs::File::create(&paths.settings_file).await {
+        Ok(v) => v,
+        Err(e) => {
+            info!("SAVE_SETTINGS: failed to create \"settings.json\" -> {e}");
+            return;
+        },
+    };
+
+    match file.write_all(json.as_bytes()).await {
+        Ok(_) => {},
+        Err(e) => {
+            error!("SAVE_SETTINGS: failed to write \"settings.json\" -> {e}");
+        },
     }
 }
 
@@ -340,4 +399,5 @@ impl State {
 enum Message {
     UpdateScreenMessage(screen::update::Message),
     HomeScreenMessage(screen::home::Message),
+    SaveSettings(()),
 }

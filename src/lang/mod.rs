@@ -39,8 +39,14 @@ type Text = &'static str;
 
 #[derive(Default, Clone)]
 pub struct Translation {
-    pub update_screen_install_label: Text,
-    pub update_screen_update_label: Text,
+    pub update_screen_caption_install: Text,
+    pub update_screen_caption_update: Text,
+
+    pub home_screen_popup_caption: Text,
+    pub home_screen_pupup_button_update_now: Text,
+    pub home_screen_pupup_button_update_later: Text,
+
+    pub home_screen_link_input_placeholder: Text,
    
     pub context_menu_paste: Text,
 }
