@@ -11,7 +11,8 @@ use reqwest::Client;
 use tracing::{info, error};
 
 use crate::command::{deno, yt_dlp};
-use crate::{Paths, Settings, github};
+use crate::platform::windows::{error_dialog, uninstall};
+use crate::{Images, Paths, Settings, github};
 use crate::lang::Translation;
 
 pub struct Screen {
@@ -19,6 +20,7 @@ pub struct Screen {
     settings: Settings,
     show_update_popup: bool,
     show_credits_popup: bool,
+    show_uninstall_popup: bool,
     link_input: String,
 }
 
@@ -31,7 +33,10 @@ pub enum Message {
     ThemeSelected(crate::Theme),
     LanguageSelected(crate::lang::Language),
     AutoUpdatesToggled(bool),
-    ShowCredits(bool),
+    ShowCreditsPopup(bool),
+    ShowUninstallPopup(bool),
+    Uninstall,
+    UninstallScriptLaunched(crate::platform::windows::Result<()>),
     Debug,
 }
 
@@ -39,6 +44,8 @@ pub enum Action {
     None,
     UpdateNeeded,
     SettingsChanged(Settings),
+    Run(Task<Message>),
+    Exit,
 }
 
 impl Screen {
@@ -48,6 +55,7 @@ impl Screen {
             settings,
             show_update_popup: false,
             show_credits_popup: false,
+            show_uninstall_popup: false,
             link_input: String::new(),
         }
     }
@@ -99,26 +107,74 @@ impl Screen {
                 Action::SettingsChanged(self.settings.clone())
             },
 
-            Message::ShowCredits(b) => {
+            Message::ShowCreditsPopup(b) => {
                 self.show_credits_popup = b;
                 Action::None
             },
+
+            Message::ShowUninstallPopup(b) => {
+                self.show_uninstall_popup = b;
+                Action::None
+            }
+
+            Message::Uninstall => {
+                self.show_uninstall_popup = false;
+                Action::Run(
+                    Task::perform(
+                        uninstall(),
+                        Message::UninstallScriptLaunched,
+                    ),
+                )
+            }
+
+            Message::UninstallScriptLaunched(r) => {
+                match r {
+                    Ok(_) => {
+                        info!("HOME: uninstall script successfully launched");
+                        Action::Exit
+                    },
+                    Err(e) => {
+                        error!("HOME: failed to launch update script -> {e}");
+                        error_dialog("failed to uninstall");
+                        Action::None
+                    },
+                }
+            }
 
             Message::Debug => Action::None,
         }
     }
 
-    pub fn view(&self, translation: &Translation) -> Element<'_, Message> {
+    pub fn view(&self, translation: &Translation, images: &Images) -> Element<'_, Message> {
         let base = column![
             self.menu_bar(translation),
             center(
-                text_input(translation.home_screen_link_input_placeholder, &self.link_input)
-                    .on_input(Message::LinkInputChanged)
-            ).padding(30),
+                row![
+                    text_input(translation.home_screen_link_input_placeholder, &self.link_input)
+                        .on_input(Message::LinkInputChanged),
+                    button(
+                        center(
+                            image(
+                                images.paste.clone(),
+                            ),
+                        ),
+                    )
+                    .width(50)
+                    .height(30)
+                    .on_press(Message::Debug),
+                ]
+                .align_y(Vertical::Center),
+            ),
         ];
 
         let base = if self.show_credits_popup {
             self.modal(base, self.credits_popup(translation))
+        } else {
+            base.into()
+        };
+
+        let base = if self.show_uninstall_popup {
+            self.modal(base, self.uninstall_popup(translation))
         } else {
             base.into()
         };
@@ -129,6 +185,50 @@ impl Screen {
         } else {
             base.into()
         }
+    }
+
+    fn uninstall_popup(&self, translation: &Translation) -> Element<'_, Message> {
+        mouse_area(
+            center(
+                center(
+                    column![
+                        space().height(5),
+                        text(translation.home_screen_about_uninstall)
+                            .size(30),
+                        space().height(Length::Fill),
+                        text(translation.home_screen_uninstall_caption),
+                        space().height(Length::Fill),
+                        row![
+                            space().width(Length::FillPortion(2)),
+                            button(translation.general_yes)
+                                .on_press(Message::Uninstall),
+                            space().width(Length::FillPortion(1)),
+                            button(translation.general_no)
+                                .on_press(Message::ShowUninstallPopup(false)),
+                            space().width(Length::FillPortion(2)),
+                        ]
+                        .align_y(Vertical::Center),
+                        space().height(5)
+                    ]
+                    .align_x(Horizontal::Center)
+                )
+                .style(|theme: &iced::Theme| {
+                    let pal = theme.extended_palette();
+                    container::Style {
+                        background: Some(pal.background.base.color.into()),
+                        border: iced::border::rounded(10),
+                        ..Default::default()
+                    }
+                })
+                .width(350)
+                .height(200)
+            )
+            .style(container::transparent)
+            .width(Length::Fill)
+            .height(Length::Fill)
+        )
+        .on_press(Message::ShowUninstallPopup(false))
+        .into()
     }
     
     fn credits_popup(&self, translation: &Translation) -> Element<'_, Message> {
@@ -144,8 +244,8 @@ impl Screen {
                         text("Fathema Khanom - Flaticon"),
                         text("paonkz - Flaticon"),
                         space().height(Length::Fill),
-                        button(translation.home_screen_credits_close)
-                            .on_press(Message::ShowCredits(false)),
+                        button(translation.general_close)
+                            .on_press(Message::ShowCreditsPopup(false)),
                         space().height(5),
                     ]
                     .align_x(Horizontal::Center)
@@ -159,14 +259,14 @@ impl Screen {
                     }
                 })
                 .width(400)
-                .height(200)
+                .height(200),
             )
             .style(container::transparent)
             .width(Length::Fill)
-            .height(Length::Fill)
+            .height(Length::Fill),
         )
-            .on_press(Message::ShowCredits(false))
-            .into()
+        .on_press(Message::ShowCreditsPopup(false))
+        .into()
     }
 
     fn menu_bar(&self, translation: &Translation) -> Element<'_, Message> {
@@ -184,7 +284,8 @@ impl Screen {
                             Message::ThemeSelected,
                         ),
                         space().width(5),
-                    ].align_y(Vertical::Center),
+                    ]
+                    .align_y(Vertical::Center),
                 ),
 
                 Item::new(
@@ -198,7 +299,8 @@ impl Screen {
                             Message::LanguageSelected,
                         ),
                         space().width(5),
-                    ].align_y(Vertical::Center),
+                    ]
+                    .align_y(Vertical::Center),
                 ),
 
                 Item::new(
@@ -209,7 +311,8 @@ impl Screen {
                         toggler(self.settings.auto_updates)
                             .on_toggle(Message::AutoUpdatesToggled),
                         space().width(5),
-                    ].align_y(Vertical::Center),
+                    ]
+                    .align_y(Vertical::Center),
                 ),
             ])
             .width(Length::Shrink)
@@ -221,7 +324,19 @@ impl Screen {
         let about_menu = Item::with_menu(
             self.menu_button(translation.home_screen_menu_about, Message::Debug),
             Menu::new(vec![
-                Item::new(self.menu_button(translation.home_screen_about_credits, Message::ShowCredits(true))),
+                Item::new(
+                    self.menu_button(
+                        translation.home_screen_about_credits,
+                        Message::ShowCreditsPopup(true),
+                    ),
+                ),
+
+                Item::new(
+                    self.menu_button(
+                        translation.home_screen_about_uninstall,
+                        Message::ShowUninstallPopup(true),
+                    ),
+                ),
             ])
             .width(Length::Shrink)
             .spacing(5.0)
@@ -263,13 +378,13 @@ impl Screen {
         center(
             column![
                 space().height(20),
-                text(translation.home_screen_popup_caption).size(30),
+                text(translation.home_screen_update_popup_caption).size(30),
                 space().height(Length::Fill),
                 row![
                     space().width(Length::Fill),
-                    button(translation.home_screen_pupup_button_update_now).on_press(Message::UpdateNow),
+                    button(translation.home_screen_update_popup_button_update_now).on_press(Message::UpdateNow),
                     space().width(Length::Fill),
-                    button(translation.home_screen_pupup_button_update_later).on_press(Message::UpdateLater),
+                    button(translation.home_screen_update_pupup_button_update_later).on_press(Message::UpdateLater),
                     space().width(Length::Fill),
                 ],
                 space().height(20),

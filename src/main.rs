@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info};
 use iced::{Element, Task};
+use iced::widget::image::Handle;
 
 use yt_downloader::*;
 use yt_downloader::lang::*;
@@ -84,6 +85,7 @@ struct State {
     active_screen: Screen,
     http_client: reqwest::Client,
     default_theme: iced::Theme,
+    images: Images,
 }
 
 impl State {
@@ -285,6 +287,9 @@ impl State {
                 active_screen,
                 http_client,
                 default_theme,
+                images: Images {
+                    paste: Handle::from_bytes(include_bytes!("../res/paste.png").as_slice()),
+                },
             },
 
             task,
@@ -313,6 +318,9 @@ impl State {
                 if let Screen::Home(home_screen) = &mut self.active_screen {
                     let action = home_screen.update(message);
                     match action {
+                        screen::home::Action::Run(task) => task.map(Message::HomeScreenMessage),
+                        screen::home::Action::Exit => iced::exit(),
+                        
                         screen::home::Action::UpdateNeeded => {
                             let mut sc = screen::update::Screen::new(Arc::clone(&self.paths));
                             let task = sc.start(UpdateKind::Normal, &self.http_client);
@@ -350,7 +358,7 @@ impl State {
             },
 
             Screen::Home(home_screen) => {
-                home_screen.view(self.languages.translation())
+                home_screen.view(self.languages.translation(), &self.images)
                     .map(Message::HomeScreenMessage)
             },
         }

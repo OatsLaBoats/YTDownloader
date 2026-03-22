@@ -50,12 +50,16 @@ type Text = &'static str;
 
 #[derive(Default, Clone)]
 pub struct Translation {
+    pub general_yes: Text,
+    pub general_no: Text,
+    pub general_close: Text,
+    
     pub update_screen_caption_install: Text,
     pub update_screen_caption_update: Text,
 
-    pub home_screen_popup_caption: Text,
-    pub home_screen_pupup_button_update_now: Text,
-    pub home_screen_pupup_button_update_later: Text,
+    pub home_screen_update_popup_caption: Text,
+    pub home_screen_update_popup_button_update_now: Text,
+    pub home_screen_update_pupup_button_update_later: Text,
 
     pub home_screen_menu_settings: Text,
     pub home_screen_settings_color_scheme: Text,
@@ -65,7 +69,8 @@ pub struct Translation {
     pub home_screen_menu_about: Text,
     pub home_screen_about_credits: Text,
     pub home_screen_credits_content: Text,
-    pub home_screen_credits_close: Text,
+    pub home_screen_about_uninstall: Text,
+    pub home_screen_uninstall_caption: Text,
 
     pub home_screen_link_input_placeholder: Text,
    

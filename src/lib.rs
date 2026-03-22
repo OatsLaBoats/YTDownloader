@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
+use iced::widget::image::Handle;
 
 pub mod platform;
 pub mod screen;
@@ -57,4 +58,8 @@ pub struct Paths {
     pub old_ffmpeg_exe: PathBuf,
     pub old_deno_exe: PathBuf,
     pub old_version_file: PathBuf,
+}
+
+pub struct Images {
+    pub paste: Handle,
 }

@@ -2,7 +2,6 @@
 
 use std::ffi::{CString, OsString};
 use std::os::windows::ffi::OsStringExt;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -140,4 +139,20 @@ pub async fn finish_update_process() -> Result<()> {
     Ok(())
 }
 
-// TODO: Uninstall script
+pub async fn uninstall() -> Result<()> {
+    tokio::process::Command::new("powershell")
+        .arg("-c")
+        .arg(" \
+                Wait-Process -Name yt_downloader; \
+                Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\deno.exe\"; \
+                Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\yt-dlp.exe\"; \
+                Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\ffmpeg\"; \
+                Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
+                Remove-Item -Path \"$HOME:Desktop\\YT Downloader.lnk\"; \
+            ")
+        .spawn().map_err(|e|
+            Error::SpawnPowershellCommandFailed(Arc::new(e))
+        )?;
+
+    Ok(())
+}
