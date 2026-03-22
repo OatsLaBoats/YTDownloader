@@ -11,6 +11,17 @@ pub enum Language {
     German,
 }
 
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::English => "English (en)",
+            Self::German => "Deutsch (de)",
+        };
+
+        write!(f, "{s}")
+    }
+}
+
 pub struct TextDatabase {
     pub current_language: Language,
     translations: HashMap<Language, Translation>,
@@ -45,6 +56,16 @@ pub struct Translation {
     pub home_screen_popup_caption: Text,
     pub home_screen_pupup_button_update_now: Text,
     pub home_screen_pupup_button_update_later: Text,
+
+    pub home_screen_menu_settings: Text,
+    pub home_screen_settings_color_scheme: Text,
+    pub home_screen_settings_auto_updates: Text,
+    pub home_screen_settings_language: Text,
+
+    pub home_screen_menu_about: Text,
+    pub home_screen_about_credits: Text,
+    pub home_screen_credits_content: Text,
+    pub home_screen_credits_close: Text,
 
     pub home_screen_link_input_placeholder: Text,
    

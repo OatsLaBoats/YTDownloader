@@ -18,6 +18,7 @@ pub struct Screen {
     paths: Arc<Paths>,
     settings: Settings,
     show_update_popup: bool,
+    show_credits_popup: bool,
     link_input: String,
 }
 
@@ -28,7 +29,9 @@ pub enum Message {
     UpdateLater,
     LinkInputChanged(String),
     ThemeSelected(crate::Theme),
+    LanguageSelected(crate::lang::Language),
     AutoUpdatesToggled(bool),
+    ShowCredits(bool),
     Debug,
 }
 
@@ -44,6 +47,7 @@ impl Screen {
             paths,
             settings,
             show_update_popup: false,
+            show_credits_popup: false,
             link_input: String::new(),
         }
     }
@@ -90,6 +94,16 @@ impl Screen {
                 Action::SettingsChanged(self.settings.clone())
             }
 
+            Message::LanguageSelected(language) => {
+                self.settings.ui_language = language;
+                Action::SettingsChanged(self.settings.clone())
+            },
+
+            Message::ShowCredits(b) => {
+                self.show_credits_popup = b;
+                Action::None
+            },
+
             Message::Debug => Action::None,
         }
     }
@@ -103,23 +117,67 @@ impl Screen {
             ).padding(30),
         ];
 
+        let base = if self.show_credits_popup {
+            self.modal(base, self.credits_popup(translation))
+        } else {
+            base.into()
+        };
+
         if self.show_update_popup {
-            let popup = self.popup(translation);
+            let popup = self.update_popup(translation);
             self.modal(base, popup)
         } else {
             base.into()
         }
     }
+    
+    fn credits_popup(&self, translation: &Translation) -> Element<'_, Message> {
+        mouse_area(
+            center(
+                center(
+                    column![
+                        space().height(5),
+                        text(translation.home_screen_about_credits)
+                            .size(30),
+                        space().height(Length::Fill),
+                        text(translation.home_screen_credits_content),
+                        text("Fathema Khanom - Flaticon"),
+                        text("paonkz - Flaticon"),
+                        space().height(Length::Fill),
+                        button(translation.home_screen_credits_close)
+                            .on_press(Message::ShowCredits(false)),
+                        space().height(5),
+                    ]
+                    .align_x(Horizontal::Center)
+                )
+                .style(|theme: &iced::Theme| {
+                    let pal = theme.extended_palette();
+                    container::Style {
+                        background: Some(pal.background.base.color.into()),
+                        border: iced::border::rounded(10),
+                        ..Default::default()
+                    }
+                })
+                .width(400)
+                .height(200)
+            )
+            .style(container::transparent)
+            .width(Length::Fill)
+            .height(Length::Fill)
+        )
+            .on_press(Message::ShowCredits(false))
+            .into()
+    }
 
     fn menu_bar(&self, translation: &Translation) -> Element<'_, Message> {
         let settings_menu = Item::with_menu(
-            self.menu_button("Settings", Message::Debug),
+            self.menu_button(translation.home_screen_menu_settings, Message::Debug),
             Menu::new(vec![
                 Item::new(
                     row![
                         space().width(5),
-                        text("Color Scheme"),
-                        space().width(30),
+                        text(translation.home_screen_settings_color_scheme),
+                        space().width(Length::Fill),
                         pick_list(
                             [crate::Theme::Dark, crate::Theme::Light, crate::Theme::Auto],
                             Some(&self.settings.ui_theme),
@@ -132,11 +190,25 @@ impl Screen {
                 Item::new(
                     row![
                         space().width(5),
-                        text("Auto updates"),
+                        text(translation.home_screen_settings_language),
+                        space().width(30),
+                        pick_list(
+                            [crate::lang::Language::English, crate::lang::Language::German],
+                            Some(&self.settings.ui_language),
+                            Message::LanguageSelected,
+                        ),
+                        space().width(5),
+                    ].align_y(Vertical::Center),
+                ),
+
+                Item::new(
+                    row![
+                        space().width(5),
+                        text(translation.home_screen_settings_auto_updates),
                         space().width(Length::Fill),
                         toggler(self.settings.auto_updates)
                             .on_toggle(Message::AutoUpdatesToggled),
-                        space().width(Length::Fill),
+                        space().width(5),
                     ].align_y(Vertical::Center),
                 ),
             ])
@@ -147,9 +219,9 @@ impl Screen {
         );
 
         let about_menu = Item::with_menu(
-            self.menu_button("About", Message::Debug),
+            self.menu_button(translation.home_screen_menu_about, Message::Debug),
             Menu::new(vec![
-                Item::new(self.menu_button("Credits", Message::Debug)),
+                Item::new(self.menu_button(translation.home_screen_about_credits, Message::ShowCredits(true))),
             ])
             .width(Length::Shrink)
             .spacing(5.0)
@@ -187,16 +259,20 @@ impl Screen {
             .into()
     }
 
-    fn popup(&self, translation: &Translation) -> Element<'_, Message> {
+    fn update_popup(&self, translation: &Translation) -> Element<'_, Message> {
         center(
             column![
-                text(translation.home_screen_popup_caption),
-                space().height(100),
+                space().height(20),
+                text(translation.home_screen_popup_caption).size(30),
+                space().height(Length::Fill),
                 row![
+                    space().width(Length::Fill),
                     button(translation.home_screen_pupup_button_update_now).on_press(Message::UpdateNow),
-                    space().width(100),
+                    space().width(Length::Fill),
                     button(translation.home_screen_pupup_button_update_later).on_press(Message::UpdateLater),
+                    space().width(Length::Fill),
                 ],
+                space().height(20),
             ]
             .align_x(Horizontal::Center)
         )
@@ -208,7 +284,7 @@ impl Screen {
                 ..Default::default()
             }
         })
-        .width(400)
+        .width(300)
         .height(200)
         .into()
     }

@@ -321,7 +321,9 @@ impl State {
                         },
 
                         screen::home::Action::SettingsChanged(settings) => {
+                            info!("APP: Saving new settings");
                             self.settings = settings.clone();
+                            self.languages.current_language = settings.ui_language;
                             Task::perform(
                                 save_settings(
                                     Arc::clone(&self.paths),
