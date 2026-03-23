@@ -21,6 +21,11 @@ use yt_downloader::platform::windows::*;
 // TODO: Imporve logging with tags
 // TODO: Add tooltips
 // TODO: Maybe log the errors inside the async functions instead of returning them outside
+// TODO: Integrity check before update check
+// TODO: Include updated process maybe as fallback
+// TODO: Change window decorations for update screen
+// TODO: Remove tags it adds them on it's own
+// TODO: Sponsorblock
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -289,6 +294,8 @@ impl State {
                 default_theme,
                 images: Images {
                     paste: Handle::from_bytes(include_bytes!("../res/paste.png").as_slice()),
+                    arrow_left: Handle::from_bytes(include_bytes!("../res/left-arrow.png").as_slice()),
+                    arrow_right: Handle::from_bytes(include_bytes!("../res/right-arrow.png").as_slice()),
                 },
             },
 

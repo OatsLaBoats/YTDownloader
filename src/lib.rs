@@ -62,4 +62,6 @@ pub struct Paths {
 
 pub struct Images {
     pub paste: Handle,
+    pub arrow_left: Handle,
+    pub arrow_right: Handle,
 }

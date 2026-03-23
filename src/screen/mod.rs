@@ -1,5 +1,6 @@
 pub mod home;
 pub mod update;
+mod download;
 
 pub enum Screen {
     Update(update::Screen),

@@ -101,7 +101,9 @@ pub async fn finish_install_process() -> Result<()> {
     )?;
 
     tokio::process::Command::new("powershell")
-        .arg("-c")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
         .arg(format!(" \
                 Wait-Process -Name yt_downloader; \
                 Move-Item -Path {} -Destination \"$env:LOCALAPPDATA\\YT Downloader\\\"; \
@@ -121,7 +123,9 @@ pub async fn finish_install_process() -> Result<()> {
 // The only difference is the removal of the old executable
 pub async fn finish_update_process() -> Result<()> {
     tokio::process::Command::new("powershell")
-        .arg("-c")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
         .arg(" \
                 Wait-Process -Name yt_downloader; \
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
@@ -131,7 +135,7 @@ pub async fn finish_update_process() -> Result<()> {
                 $Shortcut.TargetPath = \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
                 $Shortcut.Save(); \
                 Start-Process -FilePath \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
-            ")
+        ")
         .spawn().map_err(|e|
             Error::SpawnPowershellCommandFailed(Arc::new(e))
         )?;
@@ -141,7 +145,9 @@ pub async fn finish_update_process() -> Result<()> {
 
 pub async fn uninstall() -> Result<()> {
     tokio::process::Command::new("powershell")
-        .arg("-c")
+        .arg("-ExecutionPolicy")
+        .arg("Bypass")
+        .arg("-Command")
         .arg(" \
                 Wait-Process -Name yt_downloader; \
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\deno.exe\"; \
@@ -149,7 +155,7 @@ pub async fn uninstall() -> Result<()> {
                 Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\ffmpeg\"; \
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
                 Remove-Item -Path \"$HOME:Desktop\\YT Downloader.lnk\"; \
-            ")
+        ")
         .spawn().map_err(|e|
             Error::SpawnPowershellCommandFailed(Arc::new(e))
         )?;

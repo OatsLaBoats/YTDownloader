@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use iced::{Color, Length, Padding};
+use iced::{Color, Length, Padding, color, never};
 use iced::alignment::{Horizontal, Vertical};
 use iced::{Element, Task};
 use iced::widget::*;
@@ -10,18 +10,51 @@ use iced_aw::*;
 use reqwest::Client;
 use tracing::{info, error};
 
+use crate::command::yt_dlp::{AudioFileType, AudioInfo, PlaylistInfo, PlaylistItem, VideoFileType, VideoInfo, VideoQuality};
 use crate::command::{deno, yt_dlp};
+use yt_dlp::LinkInfo;
 use crate::platform::windows::{error_dialog, uninstall};
+use crate::widget::circular::Circular;
 use crate::{Images, Paths, Settings, github};
 use crate::lang::Translation;
+use super::download::{Download};
+
+// TODO: Pause, and cancel download buttons
+// You can query progress using _percent, eta, tmpfilename
+// Query video info using templaes instead of json because it seem too error prone
+//
+// TODO: Hide download list when nothing is downloading
+// TODO: Make link info cancelable
+
+// TODO: save some things in settings
+// TODO: Refactor
 
 pub struct Screen {
     paths: Arc<Paths>,
     settings: Settings,
+
     show_update_popup: bool,
     show_credits_popup: bool,
     show_uninstall_popup: bool,
+
     link_input: String,
+    loading_link_info: bool,
+    link_info: Option<LinkInfo>,
+    link_error: Option<LinkError>,
+    selected_video_quality: VideoQuality,
+    selected_video_format: VideoFileType,
+    selected_audio_format: AudioFileType,
+    audio_only: bool,
+
+    playlist_items: combo_box::State<Arc<PlaylistItem>>,
+    selected_playlist_item: Option<Arc<PlaylistItem>>,
+    playlist_link_info: Option<LinkInfo>,
+    loading_playlist_link_info: bool,
+}
+
+enum LinkError {
+    InvalidUrl,
+    InfoRetrievalFailed,
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +70,15 @@ pub enum Message {
     ShowUninstallPopup(bool),
     Uninstall,
     UninstallScriptLaunched(crate::platform::windows::Result<()>),
+    PasteLink,
+    ClipboardRead(Option<String>),
+    LinkInfoQueryFinished(yt_dlp::Result<LinkInfo>),
+    VideoQualitySelected(VideoQuality),
+    VideoFormatSelected(VideoFileType),
+    AudioFormatSelected(AudioFileType),
+    AudioOnlyToggled(bool),
+    PlaylistItemSelected(Arc<PlaylistItem>),
+    PlaylistLinkInfoQueryFinished(yt_dlp::Result<LinkInfo>),
     Debug,
 }
 
@@ -57,6 +99,17 @@ impl Screen {
             show_credits_popup: false,
             show_uninstall_popup: false,
             link_input: String::new(),
+            loading_link_info: false,
+            link_info: None,
+            link_error: None,
+            selected_video_quality: VideoQuality::Best,
+            selected_video_format: VideoFileType::MP4,
+            selected_audio_format: AudioFileType::MP3,
+            audio_only: false,
+            playlist_items: combo_box::State::new(Vec::new()),
+            selected_playlist_item: None,
+            playlist_link_info: None,
+            loading_playlist_link_info: false,
         }
     }
 
@@ -89,6 +142,116 @@ impl Screen {
 
             Message::LinkInputChanged(s) => {
                 self.link_input = s;
+                self.link_error = None;
+
+                if self.link_input.is_empty() {
+                    return Action::None;
+                }
+
+                if !self.paths.yt_dlp_exe.exists()
+                || !self.paths.ffmpeg_dir.exists()
+                || !self.paths.deno_exe.exists() {
+                    self.show_update_popup = true;
+                    error!("HOME: tools missing");
+                    return Action::None;
+                }
+
+                match url::Url::parse(&self.link_input) {
+                    Ok(_) => {
+                        info!("HOME: querying link info");
+                        self.loading_link_info = true;
+                        Action::Run(
+                            Task::perform(
+                                yt_dlp::query_link_info(
+                                    self.paths.yt_dlp_exe.clone(),
+                                    self.paths.ffmpeg_dir.clone(),
+                                    self.paths.deno_exe.clone(),
+                                    self.link_input.clone(),
+                                ),
+                                Message::LinkInfoQueryFinished,
+                            ),
+                        )
+                    },
+
+                    Err(e) => {
+                        error!("HOME: invalid url input -> {e}");
+                        self.link_error = Some(LinkError::InvalidUrl);
+                        Action::None
+                    },
+                }
+            },
+
+            Message::PlaylistLinkInfoQueryFinished(r) => {
+                self.loading_playlist_link_info = false;
+
+                match r {
+                    Ok(v) => {
+                        info!("playlist link info retrieved successfully");
+
+                        match &v {
+                            LinkInfo::Video(i) => {
+                                if i.f_1080.is_some() {
+                                    self.selected_video_quality = VideoQuality::Q1080;
+                                } else {
+                                    self.selected_video_quality = VideoQuality::Best;
+                                }
+
+                                self.playlist_link_info = Some(v);
+                            },
+
+                            LinkInfo::Playlist(i) => {
+                                error!("playlist can not contain an other playlist");
+                                self.playlist_link_info = None;
+                            },
+
+                            _ => self.playlist_link_info = Some(v),
+                        }
+                        
+                    },
+
+                    Err(e) => {
+                        error!("failed to retrieve playlist link info -> {e}");
+                        self.playlist_link_info = None;
+                        self.link_error = Some(LinkError::InfoRetrievalFailed);
+                    },
+                }
+
+                Action::None
+            },
+
+            Message::LinkInfoQueryFinished(r) => {
+                self.loading_link_info = false;
+
+                match r {
+                    Ok(v) => {
+                        info!("HOME: link info retrieved successfully");
+
+                        match &v {
+                            LinkInfo::Video(i) => {
+                                if i.f_1080.is_some() {
+                                    self.selected_video_quality = VideoQuality::Q1080;
+                                } else {
+                                    self.selected_video_quality = VideoQuality::Best;
+                                }
+                            },
+
+                            LinkInfo::Playlist(i) => {
+                                self.playlist_items = combo_box::State::new(i.items.clone());
+                            },
+
+                            _ => {},
+                        }
+                        
+                        self.link_info = Some(v);
+                    },
+
+                    Err(e) => {
+                        error!("HOME: failed to retrieve link info -> {e}");
+                        self.link_info = None;
+                        self.link_error = Some(LinkError::InfoRetrievalFailed);
+                    },
+                }
+                
                 Action::None
             },
 
@@ -139,32 +302,165 @@ impl Screen {
                         Action::None
                     },
                 }
+            },
+
+            Message::PasteLink => {
+                info!("HOME: paste clipboard contents");
+                Action::Run(
+                    iced::clipboard::read()
+                        .map(Message::ClipboardRead)
+                )
+            },
+
+            Message::ClipboardRead(contents) => {
+                match contents {
+                    Some(v) => {
+                        Action::Run(
+                            Task::done(
+                                Message::LinkInputChanged(v),
+                            ),
+                        )
+                    },
+                    None => Action::None,
+                }
+            },
+
+            Message::VideoQualitySelected(q) => {
+                self.selected_video_quality = q;
+                Action::None
+            },
+
+            Message::AudioOnlyToggled(b) => {
+                self.audio_only = b;
+                Action::None
+            },
+
+            Message::VideoFormatSelected(f) => {
+                self.selected_video_format = f;
+                Action::None
+            },
+
+            Message::AudioFormatSelected(f) => {
+                self.selected_audio_format = f;
+                Action::None
             }
+
+            Message::PlaylistItemSelected(i) => {
+                info!("querying playlist link info");
+                self.loading_playlist_link_info = true;
+
+                self.selected_playlist_item = Some(Arc::clone(&i));
+                Action::Run(
+                    Task::perform(
+                        yt_dlp::query_link_info(
+                            self.paths.yt_dlp_exe.clone(),
+                            self.paths.ffmpeg_dir.clone(),
+                            self.paths.deno_exe.clone(),
+                            i.url.clone(),
+                        ),
+                        Message::PlaylistLinkInfoQueryFinished,
+                    ),
+                )
+            },
 
             Message::Debug => Action::None,
         }
     }
 
+    // TODO: Translate
     pub fn view(&self, translation: &Translation, images: &Images) -> Element<'_, Message> {
+        let info_panel: Element<'_, Message> = if let Some(e) = &self.link_error {
+            match e {
+                LinkError::InvalidUrl => {
+                    rich_text![
+                        span("Invalid url\nMake sure the link is correct")
+                            .color(color!(0xff0000)),
+                    ]
+                    .on_link_click(never)
+                    .center()
+                    .into()
+                },
+
+                LinkError::InfoRetrievalFailed => {
+                    rich_text![
+                        span("Failed to retrieve link information\nMake sure the link refers to valid media")
+                            .color(color!(0xff0000)),
+                    ]
+                    .on_link_click(never)
+                    .center()
+                    .into()
+                },
+            }
+        } else if self.loading_link_info {
+            column![
+                Circular::new(),
+                space().height(30),
+                text("Loading link..."),
+                space().height(Length::Fill),
+            ]
+            .align_x(Horizontal::Center)
+            .into()
+        } else if let Some(li) = &self.link_info {
+            match li {
+                LinkInfo::Playlist(playlist) => self.playlist_panel(translation, playlist),
+                LinkInfo::Video(video) => self.video_info_panel(translation, video, true),
+                LinkInfo::Audio(audio) => self.audio_info_panel(translation, audio, true),
+            }
+        } else {
+            space().into()
+        };
+        
         let base = column![
             self.menu_bar(translation),
+            space().height(20),
+            center(
+                scrollable(column![
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                    "THIS",
+                ])
+                .width(400)
+                .height(200),
+            )
+            .height(Length::FillPortion(1)),
+
             center(
                 row![
-                    text_input(translation.home_screen_link_input_placeholder, &self.link_input)
-                        .on_input(Message::LinkInputChanged),
-                    button(
-                        center(
-                            image(
-                                images.paste.clone(),
+                    space().width(Length::Fill),
+                    row![
+                        space().width(50),
+                        text_input(translation.home_screen_link_input_placeholder, &self.link_input)
+                            .on_input(Message::LinkInputChanged),
+                        space().width(5),
+                        button(
+                            center(
+                                image(
+                                    images.paste.clone(),
+                                ),
                             ),
-                        ),
-                    )
-                    .width(50)
-                    .height(30)
-                    .on_press(Message::Debug),
+                        )
+                        .width(50)
+                        .height(30)
+                        .on_press(Message::PasteLink),    
+                    ]
+                    .width(Length::FillPortion(3)),
+                    space().width(Length::Fill),
                 ]
                 .align_y(Vertical::Center),
-            ),
+            )
+            .height(Length::Shrink),
+            
+            center(info_panel)
+                .height(Length::FillPortion(2)),
         ];
 
         let base = if self.show_credits_popup {
@@ -185,6 +481,207 @@ impl Screen {
         } else {
             base.into()
         }
+    }
+
+    fn playlist_panel<'a>(
+        &'a self,
+        translation: &Translation,
+        info: &'a PlaylistInfo,
+    ) -> Element<'a, Message> {
+        let selection: Element<'_, Message> = combo_box(
+            &self.playlist_items,
+            "Select playlist item...",
+            self.selected_playlist_item.as_ref(),
+            Message::PlaylistItemSelected,
+        )
+        .menu_height(200)
+        .into();
+
+        let info_panel: Element<'_, Message> = if let Some(e) = &self.link_error {
+            match e {
+                LinkError::InvalidUrl => {
+                    rich_text![
+                        span("Invalid url\nMake sure the link is correct")
+                            .color(color!(0xff0000)),
+                    ]
+                    .on_link_click(never)
+                    .center()
+                    .into()
+                },
+
+                LinkError::InfoRetrievalFailed => {
+                    rich_text![
+                        span("Failed to retrieve link information\nMake sure the link refers to valid media")
+                            .color(color!(0xff0000)),
+                    ]
+                    .on_link_click(never)
+                    .center()
+                    .into()
+                },
+            }
+        } else if self.loading_playlist_link_info {
+            column![
+                Circular::new(),
+                space().height(30),
+                text("Loading link..."),
+                space().height(Length::Fill),
+            ]
+            .align_x(Horizontal::Center)
+            .into()
+        } else if let Some(li) = &self.playlist_link_info {
+            match li {
+                LinkInfo::Playlist(_) => space().into(),
+                LinkInfo::Video(video) => self.video_info_panel(translation, video, false),
+                LinkInfo::Audio(audio) => self.audio_info_panel(translation, audio, false),
+            }
+        } else {
+            space().height(Length::Fill).into()
+        };
+        
+        row![
+            space().width(Length::FillPortion(1)),
+            column![
+                text(format!("{}", info.name)),
+                row![
+                    space().width(50),
+                    selection,
+                    space().width(50),
+                ]
+                .align_y(Vertical::Center),
+
+                space().height(30),
+                info_panel,
+            ]
+            .align_x(Horizontal::Center)
+            .width(Length::FillPortion(2)),
+            space().width(Length::FillPortion(1)),
+        ]
+        .into()
+    }
+
+    fn audio_info_panel<'a>(
+        &'a self,
+        translation: &Translation,
+        info: &'a AudioInfo,
+        squish: bool,
+    ) -> Element<'a, Message> {
+        let title = match &info.title {
+            Some(v) => v,
+            None => "Unknown",
+        };
+
+        let channel = match &info.channel {
+            Some(v) => v,
+            None => "Unknown",
+        };
+
+        let options: Element<'_, Message> =
+            row![
+                text("Format"),
+                space().width(5),
+                pick_list(
+                    AudioFileType::file_types(),
+                    Some(&self.selected_audio_format),
+                    Message::AudioFormatSelected,
+                ),
+            ]
+            .align_y(Vertical::Center)
+            .into();
+
+        row![
+            if squish { space().width(Length::FillPortion(1)) } else { space() },
+            column![
+                text(format!("{}", title)).size(20),
+                text(format!("{} {}", "by", channel)),
+                space().height(30),
+                options,
+                space().height(30),
+                button("Download").on_press(Message::Debug),
+                space().height(Length::Fill),
+            ]
+            .align_x(Horizontal::Center)
+            .width(Length::FillPortion(2)),
+            if squish { space().width(Length::FillPortion(1)) } else { space() },
+        ]
+        .into()
+    }
+
+    fn video_info_panel<'a>(
+        &'a self,
+        translation: &Translation,
+        info: &'a VideoInfo,
+        squish: bool,
+    ) -> Element<'a, Message> {
+        let title = match &info.title {
+            Some(v) => v,
+            None => "Unknown",
+        };
+
+        let channel = match &info.channel {
+            Some(v) => v,
+            None => "Unknown",
+        };
+
+        let options: Element<'_, Message> = if !self.audio_only {
+            row![
+                text("Quality"),
+                space().width(5),
+                pick_list(
+                    info.qualities(),
+                    Some(&self.selected_video_quality),
+                    Message::VideoQualitySelected,
+                )
+                .menu_height(150),
+
+                space().width(50),
+
+                text("Format"),
+                space().width(5),
+                pick_list(
+                    VideoFileType::file_types(),
+                    Some(&self.selected_video_format),
+                    Message::VideoFormatSelected,
+                ),
+            ]
+            .align_y(Vertical::Center)
+            .into()
+        } else {
+            row![
+                text("Format"),
+                space().width(5),
+                pick_list(
+                    AudioFileType::file_types(),
+                    Some(&self.selected_audio_format),
+                    Message::AudioFormatSelected,
+                ),
+            ]
+            .align_y(Vertical::Center)
+            .into()
+        };
+
+        row![
+            if squish { space().width(Length::FillPortion(1)) } else { space() },
+            column![
+                text(format!("{}", title)).size(20),
+                text(format!("{} {}", "by", channel)),
+
+                space().height(30),
+
+                checkbox(self.audio_only)
+                    .label("Audio only")
+                    .on_toggle(Message::AudioOnlyToggled),
+            
+                space().height(30),
+                options,
+                space().height(30),
+                button("Download").on_press(Message::Debug),
+                space().height(Length::Fill),
+            ]
+            .align_x(Horizontal::Center)
+            .width(Length::FillPortion(2)),
+            if squish { space().width(Length::FillPortion(1)) } else { space() },
+        ]
+        .into()
     }
 
     fn uninstall_popup(&self, translation: &Translation) -> Element<'_, Message> {
@@ -243,6 +740,7 @@ impl Screen {
                         text(translation.home_screen_credits_content),
                         text("Fathema Khanom - Flaticon"),
                         text("paonkz - Flaticon"),
+                        text("Roundicons - Flaticon"),
                         space().height(Length::Fill),
                         button(translation.general_close)
                             .on_press(Message::ShowCreditsPopup(false)),
@@ -324,12 +822,13 @@ impl Screen {
         let about_menu = Item::with_menu(
             self.menu_button(translation.home_screen_menu_about, Message::Debug),
             Menu::new(vec![
-                Item::new(
+                Item::new(row![
                     self.menu_button(
                         translation.home_screen_about_credits,
                         Message::ShowCreditsPopup(true),
                     ),
-                ),
+                    space().width(Length::Fill),
+                ].align_y(Vertical::Center)),
 
                 Item::new(
                     self.menu_button(
