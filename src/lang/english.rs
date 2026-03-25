@@ -9,7 +9,7 @@ pub fn new() -> Translation {
         update_screen_caption_install: "Installing",
         update_screen_caption_update: "Updating",
 
-        home_screen_update_popup_caption: "Update available",
+        home_screen_update_popup_title: "Update available",
         home_screen_update_popup_button_update_now: "Update now",
         home_screen_update_pupup_button_update_later: "Update later",
 

@@ -39,6 +39,11 @@ pub struct Settings {
     pub auto_updates: bool,
     pub ui_language: Language,
     pub ui_theme: Theme,
+
+    // info_panel stuff
+    pub audio_only: bool,
+    pub audio_format: command::yt_dlp::AudioFileType,
+    pub video_format: command::yt_dlp::VideoFileType,
     pub download_dir: String,
 }
 
@@ -50,6 +55,7 @@ pub struct Paths {
     pub bin_dir: PathBuf,
     pub yt_dlp_exe: PathBuf,
     pub ffmpeg_dir: PathBuf,
+    pub ffmpeg_bin_dir: PathBuf,
     pub deno_exe: PathBuf,
     pub settings_file: PathBuf,
 

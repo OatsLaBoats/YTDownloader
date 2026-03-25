@@ -167,6 +167,9 @@ impl State {
         let mut ffmpeg_dir = bin_dir.clone();
         ffmpeg_dir.push("ffmpeg");
 
+        let mut ffmpeg_bin_dir = ffmpeg_dir.clone();
+        ffmpeg_bin_dir.push("bin");
+
         let mut deno_exe = bin_dir.clone();
         deno_exe.push("deno.exe");
 
@@ -195,6 +198,7 @@ impl State {
             bin_dir,
             yt_dlp_exe,
             ffmpeg_dir,
+            ffmpeg_bin_dir,
             deno_exe,
             settings_file,
 
@@ -210,6 +214,10 @@ impl State {
             auto_updates: true,
             ui_language: user_language,
             ui_theme: Theme::Auto,
+
+            audio_only: false,
+            audio_format: command::yt_dlp::AudioFileType::MP3,
+            video_format: command::yt_dlp::VideoFileType::MP4,
             download_dir: paths.downloads_dir.to_string_lossy().to_string(),
         };
 

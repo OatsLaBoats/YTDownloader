@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
@@ -38,13 +39,22 @@ pub async fn query_version(yt_dlp_path: impl AsRef<OsStr>) -> Result<String> {
 }
 
 pub async fn query_link_info(
+    force_ipv4: bool,
     yt_dlp_path: PathBuf,
     ffmpeg_path: PathBuf,
     deno_path: PathBuf,
     link: String,
 ) -> Result<LinkInfo> {
+    let ipv4 = if force_ipv4 {
+        tracing::info!("forcing ipv4");
+        "--force-ipv4"
+    } else {
+        "--skip-unavailable-fragments"
+    };
+    
     // |_| is the separator to make parsing easier. It shoudln't conflict with the content of the query.
     let link_query = tokio::process::Command::new(&yt_dlp_path)
+        .arg(ipv4)
         .arg("--ffmpeg-location")
         .arg(&ffmpeg_path)
         .arg("--js-runtimes")
@@ -77,8 +87,6 @@ pub async fn query_link_info(
         Error::ConvertBytesToUTF8Failed
     )?;
 
-    
-
     if !link_basic_info.starts_with("OK|_|") {
         return Err(Error::InvalidLink);
     }
@@ -99,6 +107,7 @@ pub async fn query_link_info(
     // If it succeeds we know it's a playlist
     if playlist_id != "NA" && playlist_name != "NA" {
         let playlist_query = tokio::process::Command::new(&yt_dlp_path)
+            .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
             .arg("--js-runtimes")
@@ -152,6 +161,7 @@ pub async fn query_link_info(
         );
     } else if vcodec != "none" {
         let video_query = tokio::process::Command::new(&yt_dlp_path)
+            .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
             .arg("--js-runtimes")
@@ -361,6 +371,7 @@ pub async fn query_link_info(
         );
     } else if acodec != "none" {
         let audio_query = tokio::process::Command::new(&yt_dlp_path)
+            .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
             .arg("--js-runtimes")
@@ -447,345 +458,6 @@ pub async fn query_link_info(
     Err(Error::InvalidLink)
 }
 
-// Only to be used by playlist items
-pub async fn query_video_info(
-    yt_dlp_path: PathBuf,
-    ffmpeg_path: PathBuf,
-    deno_path: PathBuf,
-    link: String,
-) -> Result<LinkInfo> {
-    let video_query = tokio::process::Command::new(&yt_dlp_path)
-        .arg("--ffmpeg-location")
-        .arg(&ffmpeg_path)
-        .arg("--js-runtimes")
-        .arg(&deno_path)
-        .arg("--no-playlist")
-        .arg("--print")
-        .arg("\
-            OK\
-            |_|%(title)s\
-            |_|%(channel)s\
-            |_|%(uploader)s\
-            |_|%(creator)s\
-            |_|%(format_id)s\
-            |_|%(height>%s|NA)s\
-            |_|%(fps>%s|NA)s\
-            |_|%(ext)s\
-            |_|%(resolution)s\
-            |_|\
-        ")
-        .arg("-f")
-        .arg("\
-            bv*+ba[height=144]/b[height=144],\
-            bv*+ba[height=240]/b[height=240],\
-            bv*+ba[height=360]/b[height=360],\
-            bv*+ba[height=480]/b[height=480],\
-            bv*+ba[height=720]/b[height=720],\
-            bv*+ba[height=1080]/b[height=1080],\
-            bv*+ba[height=1440]/b[height=1440],\
-            bv*+ba[height=2160]/b[height=2160],\
-            ba,\
-            bv*+ba/b,\
-            ba*\
-        ")
-        .arg(&link)
-        .kill_on_drop(true)
-        .output().await.map_err(|e|
-            Error::SpawnYtDlpFailed(Arc::new(e))
-        )?
-        .stdout;
-
-    let video_info = str::from_utf8(&video_query).map_err(|_|
-        Error::ConvertBytesToUTF8Failed
-    )?;
-
-    if !video_info.starts_with("OK|_|") {
-        return Err(Error::InvalidLink);
-    }
-
-    let mut f_144 = None;
-    let mut f_240 = None;
-    let mut f_360 = None;
-    let mut f_480 = None;
-    let mut f_720 = None;
-    let mut f_1080 = None;
-    let mut f_1440 = None;
-    let mut f_2160 = None;
-    let mut f_best = None;
-    let mut f_best_audio_only = None;
-    let mut f_best_audio = None;
-
-    let mut title = "NA";
-    let mut channel = "NA";
-    let mut uploader = "NA";
-    let mut creator = "NA";
-
-    for line in video_info.lines() {
-        let mut it = line.split("|_|");
-        it.next(); // OK
-        title = it.next().unwrap();
-        channel = it.next().unwrap();
-        uploader = it.next().unwrap();
-        creator = it.next().unwrap();
-
-        let id = it.next().unwrap();
-        let height = it.next().unwrap();
-        let fps = it.next().unwrap();
-        let ext = it.next().unwrap();
-        let resolution = it.next().unwrap();
-
-        
-
-        // There order here is very intentional and important
-        // any other order it will be parsed wrong
-        if resolution == "audio only" {
-            f_best_audio_only = Some(VideoFormat {
-                audio_only: true,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: None,
-                height: None,
-                resolution: None,
-            })
-        } else if height == "144" && f_144.is_none() {
-            f_144 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "240" && f_240.is_none() {
-            f_240 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "360" && f_360.is_none() {
-            f_360 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "480" && f_480.is_none() {
-            f_480 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "720" && f_720.is_none() {
-            f_720 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "1080" && f_1080.is_none() {
-            f_1080 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "1440" && f_1440.is_none() {
-            f_1440 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if height == "2160" && f_2160.is_none() {
-            f_2160 = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else if f_best.is_none() {
-            f_best = Some(VideoFormat {
-                audio_only: false,
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: Some(resolution.to_string()),
-            })
-        } else {
-            f_best_audio = Some(VideoFormat {
-                audio_only: resolution == "audio only",
-                format_id: id.to_string(),
-                file_ext: ext.to_string(),
-                fps: fps.parse().ok(),
-                height: height.parse().ok(),
-                resolution: if resolution == "audio only" {
-                    None
-                } else {
-                    Some(resolution.to_string())
-                },
-            })
-        }
-    }
-  
-    let channel = if channel != "NA" {
-        Some(channel.to_string())
-    } else if uploader != "NA" {
-        Some(uploader.to_string())
-    } else if creator != "NA" {
-        Some(creator.to_string())
-    } else {
-        None
-    };
-
-    let title = if title != "NA" {
-        Some(title.to_string())
-    } else {
-        None
-    };
-    
-    Ok(
-        LinkInfo::Video(
-            VideoInfo {
-                title: title,
-                channel: channel,
-                f_144,
-                f_240,
-                f_360,
-                f_480,
-                f_720,
-                f_1080,
-                f_1440,
-                f_2160,
-                f_best,
-                f_best_audio_only,
-                f_best_audio,
-            },
-        ),
-    )
-}
-
-pub async fn query_audio_info(
-    yt_dlp_path: PathBuf,
-    ffmpeg_path: PathBuf,
-    deno_path: PathBuf,
-    link: String,
-) -> Result<LinkInfo> {
-
-let audio_query = tokio::process::Command::new(&yt_dlp_path)
-        .arg("--ffmpeg-location")
-        .arg(&ffmpeg_path)
-        .arg("--js-runtimes")
-        .arg(&deno_path)
-        .arg("--no-playlist")
-        .arg("--print")
-        .arg("\
-            OK\
-            |_|%(title)s\
-            |_|%(channel)s\
-            |_|%(uploader)s\
-            |_|%(creator)s\
-            |_|%(format_id)s\
-            |_|%(ext)s\
-            |_|\
-        ")
-        .arg("-f")
-        .arg("\
-            ba,\
-            all\
-        ")
-        .arg(&link)
-        .kill_on_drop(true)
-        .output().await.map_err(|e|
-            Error::SpawnYtDlpFailed(Arc::new(e))
-        )?
-        .stdout;
-
-    let audio_info = str::from_utf8(&audio_query).map_err(|_|
-        Error::ConvertBytesToUTF8Failed
-    )?;
-
-    if !audio_info.starts_with("OK|_|") {
-        return Err(Error::InvalidLink);
-    }
-
-    let mut best = None;
-    let mut formats = Vec::new();
-
-    let mut title = "NA";
-    let mut channel = "NA";
-    let mut uploader = "NA";
-    let mut creator = "NA";
-    
-    for line in audio_info.lines() {
-        let mut it = line.split("|_|");
-        it.next(); // OK
-        title = it.next().unwrap();
-        channel = it.next().unwrap();
-        uploader = it.next().unwrap();
-        creator = it.next().unwrap();
-        let id = it.next().unwrap();
-        let ext = it.next().unwrap();
-
-        if best.is_none() {
-            best = Some(
-                AudioFormat {
-                    format_id: id.to_string(),
-                    ext: ext.to_string(),
-                }
-            );
-        } else {
-            formats.push(AudioFormat {
-                format_id: id.to_string(),
-                ext: ext.to_string(),
-            });
-        }
-    }
-    
-    let channel = if channel != "NA" {
-        Some(channel.to_string())
-    } else if uploader != "NA" {
-        Some(uploader.to_string())
-    } else if creator != "NA" {
-        Some(creator.to_string())
-    } else {
-        None
-    };
-
-    let title = if title != "NA" {
-        Some(title.to_string())
-    } else {
-        None
-    };
-
-    Ok(
-        LinkInfo::Audio(
-            AudioInfo {
-                title: title,
-                channel: channel,
-                f_best: best.unwrap(),
-                formats,
-            },
-        ),
-    )
-}
-
 #[derive(Debug, Clone)]
 pub enum LinkInfo {
     Playlist(PlaylistInfo),
@@ -830,8 +502,9 @@ pub struct VideoInfo {
     pub f_best_audio: Option<VideoFormat>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AudioFileType {
+    #[default]
     MP3,
     OGG,
     WAV,
@@ -859,8 +532,9 @@ impl AudioFileType {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum VideoFileType {
+    #[default]
     MP4,
     M4A,
     WEBM,
@@ -937,6 +611,30 @@ impl VideoInfo {
         if self.f_144.is_some() { result.push(VideoQuality::Q144) }
 
         result
+    }
+
+    pub fn to_audio_info(&self) -> AudioInfo {
+        AudioInfo {
+            title: self.title.clone(),
+            channel: self.channel.clone(),
+            f_best: if let Some(f) = &self.f_best_audio_only {
+                AudioFormat {
+                    format_id: f.format_id.clone(),
+                    ext: f.file_ext.clone(),
+                }
+            } else if let Some(f) = &self.f_best_audio {
+                AudioFormat {
+                    format_id: f.format_id.clone(),
+                    ext: f.file_ext.clone(),
+                }
+            } else {
+                AudioFormat {
+                    format_id: self.f_best.as_ref().unwrap().format_id.clone(),
+                    ext: self.f_best.as_ref().unwrap().file_ext.clone(),
+                }
+            },
+            formats: Vec::new(),
+        }
     }
 }
 

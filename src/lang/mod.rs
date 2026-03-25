@@ -57,7 +57,7 @@ pub struct Translation {
     pub update_screen_caption_install: Text,
     pub update_screen_caption_update: Text,
 
-    pub home_screen_update_popup_caption: Text,
+    pub home_screen_update_popup_title: Text,
     pub home_screen_update_popup_button_update_now: Text,
     pub home_screen_update_pupup_button_update_later: Text,
 
