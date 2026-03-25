@@ -1,7 +1,7 @@
 pub mod home;
 pub mod update;
 
-use iced::{Element, Color};
+use iced::{Color, Element, Length};
 use iced::widget::*;
 
 pub enum Screen {
@@ -37,5 +37,8 @@ fn modal<'a, Message: 'a>(
                     }
                 })
         ),
-    ].into()
+    ]
+    .height(Length::Fill)
+    .width(Length::Fill)
+    .into()
 }

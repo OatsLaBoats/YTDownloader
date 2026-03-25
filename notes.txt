@@ -2,7 +2,10 @@ attributions for icons:
 <a href="https://www.flaticon.com/free-icons/input" title="input icons">Input icons created by Fathema Khanom - Flaticon</a>
 <a href="https://www.flaticon.com/free-icons/user-interface" title="user interface icons">User interface icons created by paonkz - Flaticon</a>
 <a href="https://www.flaticon.com/free-icons/next" title="next icons">Next icons created by Roundicons - Flaticon</a>
-<a href="https://www.flaticon.com/free-icons/back" title="back icons">Back icons created by Roundicons - Flaticon</a>
+
+<a href="https://www.flaticon.com/free-icons/folder" title="folder icons">Folder icons created by Freepik - Flaticon</a>
+<a href="https://www.flaticon.com/free-icons/close" title="close icons">Close icons created by ariefstudio - Flaticon</a>
+<a href="https://www.flaticon.com/free-icons/downloading" title="downloading icons">Downloading icons created by joalfa - Flaticon</a>
 
 Planned Features:
 auto update

@@ -9,6 +9,16 @@ use crate::github;
 use crate::command::yt_dlp;
 use crate::command::deno;
 
+pub async fn open_file_picker(cwd: String) -> Option<String> {
+    Some(rfd::AsyncFileDialog::new()
+        .set_directory(&cwd)
+        .pick_folder()
+        .await?
+        .path()
+        .to_string_lossy()
+        .to_string())
+}
+
 pub async fn check_for_updates(paths: Arc<Paths>, client: Client) -> bool {
     info!("CHECK_FOR_UPDATE: start");
 

@@ -1,19 +1,18 @@
 use std::sync::Arc;
 
 use iced::alignment::{Horizontal, Vertical};
-use iced::{Element, Length, Task, color, never};
+use iced::{Element, Task, color, never};
 use iced::widget::*;
 use iced::widget::column;
 use tracing::{error, info};
 
 use crate::screen::home::download::DownloadInfo;
+use crate::screen::home::tasks::open_file_picker;
 use crate::widget::circular::Circular;
-use crate::{Paths, Settings};
+use crate::{AudioConversionQuality, Images, Paths, Settings};
 use crate::command::yt_dlp::{AudioFileType, AudioInfo, LinkInfo, PlaylistInfo, PlaylistItem, VideoFileType, VideoInfo, VideoQuality};
 use crate::command::yt_dlp;
 use crate::lang::Translation;
-
-// TODO: Force ipv4 when failing
 
 enum LinkError {
     InvalidUrl,
@@ -37,20 +36,41 @@ pub struct State {
     task_handle: Option<iced::task::Handle>,
     retry: bool,
     link: String,
+    download_link: String,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
+    UpdateSettings(Settings),
+    
     LinkInfoQueryFinished(yt_dlp::Result<LinkInfo>),
+
+    SponsorBlockToggled(bool),
+    SbSponsorToggled(bool),
+    SbIntroToggled(bool),
+    SbOutroToggled(bool),
+    SbSelfpromoToggled(bool),
+    SbPreviewToggled(bool),
+    SbFillerToggled(bool),
+    SbInteractionToggled(bool),
+    SbMusicOfftopicToggled(bool),
+    SbHookToggled(bool),
+    SbChapterToggled(bool),
+    SbAllToggled(bool),
 
     VideoQualitySelected(VideoQuality),
     VideoFormatSelected(VideoFileType),
+    RemuxToggled(bool),
 
+    AudioConversionQualitySelected(AudioConversionQuality),
     AudioFormatSelected(AudioFileType),
     AudioOnlyToggled(bool),
 
     PlaylistItemSelected(Arc<PlaylistItem>),
     PlaylistLinkInfoQueryFinished(yt_dlp::Result<LinkInfo>),
+
+    OpenFilePicker,
+    TargetLocationChanged(Option<String>),
 
     Download(DownloadInfo),
 }
@@ -81,6 +101,7 @@ impl State {
             task_handle: None,
             retry: true,
             link: String::new(),
+            download_link: String::new(),
         }
     }
 
@@ -130,6 +151,100 @@ impl State {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::UpdateSettings(settings) => {
+                self.settings = settings;
+                Action::None
+            },
+            
+            Message::OpenFilePicker => {
+                Action::Run(
+                    Task::perform(
+                        open_file_picker(self.settings.download_dir.clone()),
+                        Message::TargetLocationChanged,
+                    ),
+                )
+            },
+
+            Message::TargetLocationChanged(s) => {
+                match s {
+                    None => Action::None,
+                    Some(s) => {
+                        self.settings.download_dir = s;
+                        Action::SettingsChanged(self.settings.clone())
+                    },
+                }
+            },
+            
+            Message::SbChapterToggled(b) => {
+                self.settings.sb_options.sb_chapter = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbHookToggled(b) => {
+                self.settings.sb_options.sb_hook = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbMusicOfftopicToggled(b) => {
+                self.settings.sb_options.sb_music_offtopic = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbInteractionToggled(b) => {
+                self.settings.sb_options.sb_interaction = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbFillerToggled(b) => {
+                self.settings.sb_options.sb_filler = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbPreviewToggled(b) => {
+                self.settings.sb_options.sb_preview = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbSelfpromoToggled(b) => {
+                self.settings.sb_options.sb_selfpromo = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbOutroToggled(b) => {
+                self.settings.sb_options.sb_outro = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbIntroToggled(b) => {
+                self.settings.sb_options.sb_intro = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbSponsorToggled(b) => {
+                self.settings.sb_options.sb_sponsor = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SbAllToggled(b) => {
+                self.settings.sb_options.sb_all = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::SponsorBlockToggled(b) => {
+                self.settings.sponsor_block = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::AudioConversionQualitySelected(acq) => {
+                self.settings.conversion_quality = acq;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
+            Message::RemuxToggled(b) => {
+                self.settings.remux = b;
+                Action::SettingsChanged(self.settings.clone())
+            },
+            
             Message::Download(i) => {
                 Action::Download(i)
             },
@@ -158,6 +273,9 @@ impl State {
                 info!("querying playlist link info");
                 self.loading_playlist_link_info = true;
                 self.link_error = None;
+
+                self.download_link.clear();
+                self.download_link.push_str(&i.url);
 
                 self.selected_playlist_item = Some(Arc::clone(&i));
                 self.retry = true;
@@ -250,6 +368,8 @@ impl State {
                 match r {
                     Ok(v) => {
                         info!("link info retrieved successfully");
+                        self.download_link.clear();
+                        self.download_link.push_str(&self.link);
 
                         match &v {
                             LinkInfo::Video(i) => {
@@ -307,13 +427,14 @@ impl State {
         }
     }
 
-    pub fn view<'a>(&'a self, translation: &'a Translation) -> Element<'a, Message> {
-        self.ipanel(translation, self.link_info.as_ref(), self.loading_link_info)
+    pub fn view<'a>(&'a self, translation: &'a Translation, images: &'a Images) -> Element<'a, Message> {
+        self.ipanel(translation, images, self.link_info.as_ref(), self.loading_link_info)
     }
 
     fn ipanel<'a>(
         &'a self,
         translation: &'a Translation,
+        images: &'a Images,
         link_info: Option<&'a LinkInfo>,
         loading: bool,
     ) -> Element<'a, Message> {
@@ -321,9 +442,10 @@ impl State {
             match e {
                 LinkError::InvalidUrl => {
                     rich_text![
-                        span("Invalid url\nMake sure the link is correct")
+                        span(translation.info_panel_link_error)
                             .color(color!(0xff0000)),
                     ]
+                    .size(20)
                     .on_link_click(never)
                     .center()
                     .into()
@@ -331,9 +453,10 @@ impl State {
 
                 LinkError::InfoRetrievalFailed => {
                     rich_text![
-                        span("Failed to retrieve link information\nMake sure the link refers to valid media")
+                        span(translation.info_panel_media_error)
                             .color(color!(0xff0000)),
                     ]
+                    .size(20)
                     .on_link_click(never)
                     .center()
                     .into()
@@ -341,9 +464,9 @@ impl State {
             }
         } else if loading {
             let s = if self.retry {
-                "Loading link..."
+                translation.info_panel_loading_message_attemp1_label
             } else {
-                "Retrying..."
+                translation.info_panel_loading_message_attemp2_label
             };
 
             column![
@@ -355,9 +478,9 @@ impl State {
             .into()
         } else if let Some(li) = &link_info {
             match li {
-                LinkInfo::Playlist(playlist) => self.playlist_panel(translation, playlist),
-                LinkInfo::Video(video) => self.video_info_panel(translation, video),
-                LinkInfo::Audio(audio) => self.audio_info_panel(translation, audio),
+                LinkInfo::Playlist(playlist) => self.playlist_panel(translation, images, playlist),
+                LinkInfo::Video(video) => self.video_info_panel(translation, images, video),
+                LinkInfo::Audio(audio) => self.audio_info_panel(translation, images, audio),
             }
         } else {
             space().into()
@@ -369,11 +492,12 @@ impl State {
     fn playlist_panel<'a>(
         &'a self,
         translation: &'a Translation,
+        images: &'a Images,
         info: &'a PlaylistInfo,
     ) -> Element<'a, Message> {
         let selection: Element<'a, Message> = combo_box(
             &self.playlist_items,
-            "Select playlist item...",
+            translation.info_panel_playlist_item_placeholder,
             self.selected_playlist_item.as_ref(),
             Message::PlaylistItemSelected,
         )
@@ -382,6 +506,7 @@ impl State {
 
         let ppanel = self.ipanel(
             translation,
+            images,
             if let Some(LinkInfo::Playlist(_)) = self.playlist_link_info {
                 None
             } else {
@@ -392,7 +517,7 @@ impl State {
 
         row![
             column![
-                text(format!("{}", info.name)),
+                text(&info.name),
                 row![
                     space().width(50),
                     selection,
@@ -411,21 +536,44 @@ impl State {
     fn audio_info_panel<'a>(
         &'a self,
         translation: &'a Translation,
+        images: &'a Images,
         info: &'a AudioInfo,
     ) -> Element<'a, Message> {
         let title = match &info.title {
             Some(v) => v,
-            None => "Unknown",
+            None => translation.general_unknown,
         };
 
         let channel = match &info.channel {
             Some(v) => v,
-            None => "Unknown",
+            None => translation.general_unknown,
+        };
+
+        let cb_sponsor_block: Element<'a, Message> =
+            checkbox(self.settings.sponsor_block)
+                .label("SponsorBlock")
+                .on_toggle(Message::SponsorBlockToggled)
+                .into();
+
+        let sponsor_block_options: Element<'a, Message> = if self.settings.sponsor_block {
+            self.sponsor_block_options()
+        } else {
+            space().into()
         };
 
         let options: Element<'a, Message> =
             row![
-                text("Format"),
+                text(translation.general_quality),
+                space().width(5),
+                pick_list(
+                    [AudioConversionQuality::High, AudioConversionQuality::Medium, AudioConversionQuality::Low],
+                    Some(&self.settings.conversion_quality),
+                    Message::AudioConversionQualitySelected,
+                ),
+
+                space().width(50),
+
+                text(translation.general_format),
                 space().width(5),
                 pick_list(
                     AudioFileType::file_types(),
@@ -436,47 +584,117 @@ impl State {
             .align_y(Vertical::Center)
             .into();
 
-        row![
-            column![
-                text(format!("{}", title)).size(20),
-                text(format!("{} {}", "by", channel)),
-                space().height(30),
-                options,
-                space().height(30),
-                button("Download")
-                    .on_press(
-                        Message::Download(
-                            DownloadInfo::Audio {
-                                info: info.clone(),
-                                selected_format: self.settings.audio_format.clone(),
-                                extract_from_video: false,
-                            },
-                        ),
-                    ),
+        let sb_options = if self.settings.sponsor_block {
+            Some(self.settings.sb_options.clone())
+        } else {
+            None
+        };
+
+        column![
+            text(title).size(20),
+            text(format!("{} {}", translation.general_by, channel)),
+            space().height(30),
+
+            cb_sponsor_block,
+
+            sponsor_block_options,
+            space().height(30),
+            
+            options,
+
+            space().height(30),
+            text(translation.info_panel_download_location_label),
+            space().height(5),
+            row![
+                text_input("", &self.settings.download_dir)
+                    .style(download_path_style),
+                space().width(5),
+                
+                button(
+                    center(image(images.folder.clone()))
+                        .width(30)
+                        .height(21),
+                )
+                .on_press(Message::OpenFilePicker),
             ]
-            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center),
+
+            space().height(30),
+            button(
+                row![
+                    text(translation.general_download),
+                    space().width(5),
+                    center(image(images.download.clone()))
+                        .width(30)
+                        .height(30),
+                ]
+                .align_y(Vertical::Center),
+            )
+            .on_press(
+                Message::Download(
+                    DownloadInfo::Audio {
+                        info: info.clone(),
+                        conversion_quality: self.settings.conversion_quality,
+                        selected_format: self.settings.audio_format.clone(),
+                        extract_from_video: false,
+                        remux: false,
+                        sb_options,
+                        download_location: self.settings.download_dir.clone(),
+                        link: self.download_link.clone(),
+                    },
+                ),
+            ),
         ]
+        .align_x(Horizontal::Center)
         .into()
     }
 
     fn video_info_panel<'a>(
         &'a self,
         translation: &'a Translation,
+        images: &'a Images,
         info: &'a VideoInfo,
     ) -> Element<'a, Message> {
         let title = match &info.title {
             Some(v) => v,
-            None => "Unknown",
+            None => translation.general_unknown,
         };
 
         let channel = match &info.channel {
             Some(v) => v,
-            None => "Unknown",
+            None => translation.general_unknown,
+        };
+
+        let cb_audio_only: Element<'a, Message> = if info.has_audio {
+            checkbox(self.settings.audio_only)
+                .label(translation.info_panel_audio_only_checkbox)
+                .on_toggle(Message::AudioOnlyToggled)
+                .into()
+        } else {
+            space().into()
+        };
+
+        let cb_remux: Element<'a, Message> =
+            checkbox(self.settings.remux)
+                .label("Remux")
+                .on_toggle(Message::RemuxToggled)
+                .into();
+
+        let cb_sponsor_block: Element<'a, Message> =
+            checkbox(self.settings.sponsor_block)
+                .label("SponsorBlock")
+                .on_toggle(Message::SponsorBlockToggled)
+                .into();
+
+        let sponsor_block_options: Element<'a, Message> = if self.settings.sponsor_block {
+            self.sponsor_block_options()
+        } else {
+            space().into()
         };
 
         let options: Element<'a, Message> = if !self.settings.audio_only {
             row![
-                text("Quality"),
+                text(translation.general_quality),
                 space().width(5),
                 pick_list(
                     info.qualities(),
@@ -486,7 +704,7 @@ impl State {
 
                 space().width(50),
 
-                text("Format"),
+                text(translation.general_format),
                 space().width(5),
                 pick_list(
                     VideoFileType::file_types(),
@@ -498,7 +716,17 @@ impl State {
             .into()
         } else {
             row![
-                text("Format"),
+                text(translation.general_quality),
+                space().width(5),
+                pick_list(
+                    [AudioConversionQuality::High, AudioConversionQuality::Medium, AudioConversionQuality::Low],
+                    Some(&self.settings.conversion_quality),
+                    Message::AudioConversionQualitySelected,
+                ),
+
+                space().width(50),
+
+                text(translation.general_format),
                 space().width(5),
                 pick_list(
                     AudioFileType::file_types(),
@@ -510,41 +738,173 @@ impl State {
             .into()
         };
 
-        row![
-            column![
-                text(format!("{}", title)).size(20),
-                text(format!("{} {}", "by", channel)),
+        let sb_options = if self.settings.sponsor_block {
+            Some(self.settings.sb_options.clone())
+        } else {
+            None
+        };
 
-                space().height(30),
+        column![
+            text(title).size(20),
+            text(format!("{} {}", translation.general_by, channel)),
 
-                checkbox(self.settings.audio_only)
-                    .label("Audio only")
-                    .on_toggle(Message::AudioOnlyToggled),
-            
-                space().height(30),
-                options,
-                space().height(30),
-                button("Download")
-                    .on_press(
-                        Message::Download(
-                            if self.settings.audio_only {
-                                DownloadInfo::Audio {
-                                    info: info.to_audio_info(),
-                                    selected_format: self.settings.audio_format.clone(),
-                                    extract_from_video: true,
-                                }
-                            } else {
-                                DownloadInfo::Video {
-                                    info: info.clone(),
-                                    selected_format: self.settings.video_format.clone(),
-                                    selected_quality: self.selected_video_quality.clone(),
-                                }
-                            },
-                        ),
-                    ),
+            space().height(30),
+
+            row![
+                cb_audio_only,
+                space().width(20),
+                cb_remux,
+                space().width(20),
+                cb_sponsor_block,
             ]
-            .align_x(Horizontal::Center)
+            .align_y(Vertical::Center),
+
+            sponsor_block_options,
+        
+            space().height(30),
+            options,
+
+            space().height(30),
+            text(translation.info_panel_download_location_label),
+            space().height(5),
+            row![
+                text_input("", &self.settings.download_dir)
+                    .style(download_path_style),
+                space().width(5),
+                
+                button(
+                    center(image(images.folder.clone()))
+                        .width(30)
+                        .height(21),
+                )
+                .on_press(Message::OpenFilePicker),
+            ]
+            .align_y(Vertical::Center),
+
+            space().height(30),
+            button(
+                row![
+                    text(translation.general_download),
+                    space().width(5),
+                    center(image(images.download.clone()))
+                        .width(30)
+                        .height(30),
+                ]
+                .align_y(Vertical::Center),
+            )
+            .on_press(
+                Message::Download(
+                    if self.settings.audio_only && info.has_audio {
+                        DownloadInfo::Audio {
+                            info: info.to_audio_info(),
+                            conversion_quality: self.settings.conversion_quality,
+                            selected_format: self.settings.audio_format.clone(),
+                            extract_from_video: true,
+                            remux: self.settings.remux,
+                            sb_options,
+                            download_location: self.settings.download_dir.clone(),
+                            link: self.download_link.clone(),
+                        }
+                    } else {
+                        DownloadInfo::Video {
+                            info: info.clone(),
+                            selected_format: self.settings.video_format.clone(),
+                            selected_quality: self.selected_video_quality.clone(),
+                            remux: self.settings.remux,
+                            sb_options,
+                            download_location: self.settings.download_dir.clone(),
+                            link: self.download_link.clone(),
+                        }
+                    },
+                ),
+            ),
         ]
+        .align_x(Horizontal::Center)
         .into()
+    }
+
+    pub fn sponsor_block_options<'a>(&'a self) -> Element<'a, Message> {
+        column![
+            space().height(30),
+            row![
+                column![
+                    checkbox(self.settings.sb_options.sb_all)
+                        .label("all")
+                        .on_toggle(Message::SbAllToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_sponsor)
+                        .label("sponsor")
+                        .on_toggle(Message::SbSponsorToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_intro)
+                        .label("intro")
+                        .on_toggle(Message::SbIntroToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_hook)
+                        .label("hook")
+                        .on_toggle(Message::SbHookToggled),
+                ],
+
+                space().width(20),
+
+                column![
+                    checkbox(self.settings.sb_options.sb_outro)
+                        .label("outro")
+                        .on_toggle(Message::SbOutroToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_selfpromo)
+                        .label("self promo")
+                        .on_toggle(Message::SbSelfpromoToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_preview)
+                        .label("preview")
+                        .on_toggle(Message::SbPreviewToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_chapter)
+                        .label("chapter")
+                        .on_toggle(Message::SbChapterToggled),
+                ],
+
+                space().width(20),
+
+                column![
+                    checkbox(self.settings.sb_options.sb_filler)
+                        .label("filler")
+                        .on_toggle(Message::SbFillerToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_interaction)
+                        .label("interaction")
+                        .on_toggle(Message::SbInteractionToggled),
+
+                    space().width(20),
+
+                    checkbox(self.settings.sb_options.sb_music_offtopic)
+                        .label("music offtopic")
+                        .on_toggle(Message::SbMusicOfftopicToggled),
+                ],
+            ],
+        ]
+        .align_x(Horizontal::Center)
+        .into()
+    }
+}
+
+fn download_path_style(theme: &iced::Theme, _status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        ..text_input::default(theme, text_input::Status::Active)
     }
 }

@@ -216,9 +216,12 @@ impl State {
             ui_theme: Theme::Auto,
 
             audio_only: false,
+            remux: false,
+            conversion_quality: AudioConversionQuality::Medium,
             audio_format: command::yt_dlp::AudioFileType::MP3,
             video_format: command::yt_dlp::VideoFileType::MP4,
             download_dir: paths.downloads_dir.to_string_lossy().to_string(),
+            ..Default::default()
         };
 
         // Read the settings file if they exist
@@ -304,6 +307,11 @@ impl State {
                     paste: Handle::from_bytes(include_bytes!("../res/paste.png").as_slice()),
                     arrow_left: Handle::from_bytes(include_bytes!("../res/left-arrow.png").as_slice()),
                     arrow_right: Handle::from_bytes(include_bytes!("../res/right-arrow.png").as_slice()),
+                    close: Handle::from_bytes(include_bytes!("../res/close.png").as_slice()),
+                    play: Handle::from_bytes(include_bytes!("../res/play.png").as_slice()),
+                    pause: Handle::from_bytes(include_bytes!("../res/pause.png").as_slice()),
+                    download: Handle::from_bytes(include_bytes!("../res/download.png").as_slice()),
+                    folder: Handle::from_bytes(include_bytes!("../res/folder.png").as_slice()),
                 },
             },
 
@@ -347,12 +355,18 @@ impl State {
                             info!("APP: Saving new settings");
                             self.settings = settings.clone();
                             self.languages.current_language = settings.ui_language;
-                            Task::perform(
-                                save_settings(
-                                    Arc::clone(&self.paths),
-                                    settings,
+
+                            let sync_task = Task::done(screen::home::Message::UpdateSettings(settings.clone()))
+                                .map(Message::HomeScreenMessage);
+
+                            sync_task.chain(
+                                Task::perform(
+                                    save_settings(
+                                        Arc::clone(&self.paths),
+                                        settings,
+                                    ),
+                                    Message::SaveSettings,
                                 ),
-                                Message::SaveSettings,
                             )
                         },
 

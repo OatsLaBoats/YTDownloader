@@ -75,4 +75,18 @@ pub struct Translation {
     pub home_screen_link_input_placeholder: Text,
    
     pub context_menu_paste: Text,
+
+    pub general_unknown: Text,
+    pub general_quality: Text,
+    pub general_format: Text,
+    pub general_by: Text,
+    pub general_download: Text,
+    pub info_panel_link_error: Text,
+    pub info_panel_media_error: Text,
+    pub info_panel_loading_message_attemp1_label: Text,
+    pub info_panel_loading_message_attemp2_label: Text,
+    pub info_panel_playlist_item_placeholder: Text,
+    pub info_panel_download_location_label: Text,
+    pub info_panel_audio_only_checkbox: Text,
+    pub info_panel_side_bar_title: Text,
 }

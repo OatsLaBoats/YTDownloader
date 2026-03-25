@@ -14,6 +14,8 @@ pub struct State {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    UpdateSettings(Settings),
+    
     ThemeSelected(crate::Theme),
     LanguageSelected(crate::Language),
     AutoUpdatesToggled(bool),
@@ -38,6 +40,11 @@ impl State {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::UpdateSettings(settings) => {
+                self.settings = settings;
+                Action::None
+            },
+            
             Message::ThemeSelected(theme) => {
                 self.settings.ui_theme = theme;
                 Action::SettingsChanged(self.settings.clone())

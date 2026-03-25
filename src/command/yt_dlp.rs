@@ -27,8 +27,6 @@ pub async fn query_version(yt_dlp_path: impl AsRef<OsStr>) -> Result<String> {
             Error::SpawnYtDlpFailed(Arc::new(e))
         )?
         .stdout;
-
-    
     
     // Cut the /r/n at the end
     let version_slice = str::from_utf8(&result).map_err(|_|
@@ -47,9 +45,9 @@ pub async fn query_link_info(
 ) -> Result<LinkInfo> {
     let ipv4 = if force_ipv4 {
         tracing::info!("forcing ipv4");
-        "--force-ipv4"
+        "--force-ipv4" // Useful for when being rate limited
     } else {
-        "--skip-unavailable-fragments"
+        "--skip-unavailable-fragments" // On by default so we use it as a place holder
     };
     
     // |_| is the separator to make parsing easier. It shoudln't conflict with the content of the query.
@@ -355,6 +353,7 @@ pub async fn query_link_info(
                 VideoInfo {
                     title: title,
                     channel: channel,
+                    has_audio: acodec != "none",
                     f_144,
                     f_240,
                     f_360,
@@ -487,6 +486,7 @@ impl std::fmt::Display for PlaylistItem {
 pub struct VideoInfo {
     pub title: Option<String>,
     pub channel: Option<String>,
+    pub has_audio: bool,
 
     // Formats
     pub f_144: Option<VideoFormat>,
@@ -502,20 +502,40 @@ pub struct VideoInfo {
     pub f_best_audio: Option<VideoFormat>,
 }
 
+// TODO: Give the option between remuxing and converting
 #[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AudioFileType {
     #[default]
     MP3,
-    OGG,
+    OGG, // Can only be remuxed
     WAV,
+    ACC,
+    ALAC,
+    FLAC,
+    M4A,
+    OPUS,
+    VORBIS,
+    AIFF, // Can't be extracted has to be remuxed and recoded
+    MKA, // Same as above
+    BEST,
 }
 
+// TODO: Deal with the translation of best
 impl std::fmt::Display for AudioFileType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             Self::MP3 => "mp3",
             Self::OGG => "ogg",
             Self::WAV => "wav",
+            Self::ACC => "acc",
+            Self::ALAC => "alac",
+            Self::FLAC => "flac",
+            Self::M4A => "m4a",
+            Self::OPUS => "opus",
+            Self::VORBIS => "vorbis",
+            Self::AIFF => "aiff",
+            Self::MKA => "mka",
+            Self::BEST => "Best",
         };
 
         write!(f, "{s}")
@@ -523,11 +543,20 @@ impl std::fmt::Display for AudioFileType {
 }
 
 impl AudioFileType {
-    pub fn file_types() -> [AudioFileType; 3] {
+    pub fn file_types() -> [AudioFileType; 12] {
         [
             AudioFileType::MP3,
             AudioFileType::OGG,
             AudioFileType::WAV,
+            AudioFileType::ACC,
+            AudioFileType::ALAC,
+            AudioFileType::FLAC,
+            AudioFileType::M4A,
+            AudioFileType::OPUS,
+            AudioFileType::VORBIS,
+            AudioFileType::AIFF,
+            AudioFileType::MKA,
+            AudioFileType::BEST,
         ]
     }
 }
@@ -536,18 +565,24 @@ impl AudioFileType {
 pub enum VideoFileType {
     #[default]
     MP4,
-    M4A,
     WEBM,
     FLV,
+    AVI,
+    GIF,
+    MKV,
+    MOV,
 }
 
 impl std::fmt::Display for VideoFileType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             Self::MP4 => "mp4",
-            Self::M4A => "m4a",
             Self::WEBM => "webm",
             Self::FLV => "flv",
+            Self::AVI => "avi",
+            Self::GIF => "gif",
+            Self::MKV => "mkv",
+            Self::MOV => "mov",
         };
 
         write!(f, "{s}")
@@ -555,12 +590,15 @@ impl std::fmt::Display for VideoFileType {
 }
 
 impl VideoFileType {
-    pub fn file_types() -> [VideoFileType; 4] {
+    pub fn file_types() -> [VideoFileType; 7] {
         [
             VideoFileType::MP4,
-            VideoFileType::M4A,
             VideoFileType::WEBM,
             VideoFileType::FLV,
+            VideoFileType::AVI,
+            VideoFileType::GIF,
+            VideoFileType::MKV,
+            VideoFileType::MOV,
         ]
     }
 }
@@ -589,7 +627,7 @@ impl std::fmt::Display for VideoQuality {
             Self::Q1080 => "1080p",
             Self::Q1440 => "1440p",
             Self::Q2160 => "2160p",
-            Self::Best => "max",
+            Self::Best => "Best",
         };
         
         write!(f, "{s}")

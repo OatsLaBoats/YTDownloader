@@ -56,6 +56,7 @@ impl State {
         self.show = show;
     }
 
+    #[allow(unused)]
     pub fn show_message(&self, show: bool) -> Message {
         Message((
             self.id,
@@ -134,7 +135,7 @@ impl State {
 
         let result: Element<'_, Message> = if self.close_on_click {
             mouse_area(
-            center(popup)
+            center(opaque(popup))
                 .style(container::transparent)
                 .width(Length::Fill)
                 .height(Length::Fill),

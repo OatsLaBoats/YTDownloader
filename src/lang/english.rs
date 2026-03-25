@@ -26,8 +26,20 @@ pub fn new() -> Translation {
 
         home_screen_link_input_placeholder: "enter link",
        
-        context_menu_paste: "paste",
-
-        ..Default::default()
+        context_menu_paste: "Paste link",
+        
+        general_unknown: "Unknown",
+        general_quality: "Quality",
+        general_format: "Format",
+        general_by: "by",
+        general_download: "Download",
+        info_panel_link_error: "Error: Invalid URL make\nMake sure the link is correct",
+        info_panel_media_error: "Error: Failed to retrieve link information\nMake sure that the link refers to valid media",
+        info_panel_loading_message_attemp1_label: "Loading link...",
+        info_panel_loading_message_attemp2_label: "Retrying...",
+        info_panel_playlist_item_placeholder: "Select playlist item...",
+        info_panel_download_location_label: "Download location:",
+        info_panel_audio_only_checkbox: "Audio only",
+        info_panel_side_bar_title: "Downloads"
     }
 }

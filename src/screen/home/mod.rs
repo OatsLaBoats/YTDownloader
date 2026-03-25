@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use iced::alignment::{Horizontal, Vertical};
-use iced::{Element, Task};
+use iced::{Color, Element, Length, Task};
 use iced::widget::*;
 use iced::widget::column;
+use iced_aw::*;
 use reqwest::Client;
 use tracing::{info, error};
 
-use crate::command::yt_dlp;
 use crate::platform::windows::{error_dialog, uninstall};
 use crate::{Images, Paths, Settings};
 use crate::lang::Translation;
@@ -27,9 +27,33 @@ use tasks::check_for_updates;
 // Query video info using templaes instead of json because it seem too error prone
 //
 // TODO: Hide download list when nothing is downloading
-// TODO: Make link info cancelable
-//
-// TODO: Refactor
+
+struct IdGenerator {
+    cache: Vec<usize>,
+    latest: usize,
+}
+
+impl IdGenerator {
+    pub fn new() -> Self {
+        Self {
+            cache: Vec::new(),
+            latest: 0,
+        }
+    }
+
+    pub fn id(&mut self) -> usize {
+        if let Some(id) = self.cache.pop() {
+            return id;
+        }
+        
+        self.latest += 1;
+        self.latest
+    }
+
+    pub fn free(&mut self, id: usize) {
+        self.cache.push(id);
+    }
+}
 
 const POPUP_UPDATE: usize = 0;
 const POPUP_CREDITS: usize = 1;
@@ -46,10 +70,15 @@ pub struct Screen {
     link_input: String,
 
     info_panel: info_panel::State,
+
+    show_side_bar: bool,
+    ids: IdGenerator,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
+    UpdateSettings(Settings),
+    
     CheckForUpdateFinished(bool),
     
     PopupMessage(popup::Message),
@@ -64,6 +93,8 @@ pub enum Message {
     ClipboardRead(Option<String>),
 
     InfoPanelMessage(info_panel::Message),
+
+    ShowSideBar(bool),
 
     Debug,
 }
@@ -93,6 +124,9 @@ impl Screen {
             link_input: String::new(),
 
             info_panel: info_panel::State::new(settings, paths),
+
+            show_side_bar: false,
+            ids: IdGenerator::new(),
         }
     }
 
@@ -109,6 +143,21 @@ impl Screen {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::ShowSideBar(b) => {
+                self.show_side_bar = b;
+                Action::None
+            },
+            
+            // Sync settings with children
+            Message::UpdateSettings(settings) => {
+                let task1 = Task::done(info_panel::Message::UpdateSettings(settings.clone())).map(Message::InfoPanelMessage);
+                let task2 = Task::done(menu_bar::Message::UpdateSettings(settings)).map(Message::MenuMessage);
+
+                Action::Run(
+                    task1.chain(task2)
+                )
+            },
+            
             Message::InfoPanelMessage(message) => {
                 let action = self.info_panel.update(message);
                 match action {
@@ -254,7 +303,7 @@ impl Screen {
 
     // TODO: Translate
     pub fn view<'a>(&'a self, translation: &'a Translation, images: &'a Images) -> Element<'a, Message> {
-        let panel = self.info_panel.view(translation).map(Message::InfoPanelMessage);
+        let panel = self.info_panel.view(translation, images).map(Message::InfoPanelMessage);
 
         let menu = self.menu_bar.view(translation).map(Message::MenuMessage);
 
@@ -264,26 +313,179 @@ impl Screen {
                     .on_input(Message::LinkInputChanged),
                 space().width(5),
                 button(
-                    center(
-                        image(
-                            images.paste.clone(),
-                        ),
-                    ),
+                    center(image(images.paste.clone()))
+                        .width(30)
+                        .height(21),
                 )
-                .width(50)
-                .height(30)
                 .on_press(Message::PasteLink),    
             ]
             .align_y(Vertical::Center);
+
+        let link_input = ContextMenu::new(link_input, || {
+            button(translation.context_menu_paste)
+                .on_press(Message::PasteLink)
+                .into()
+        });
+
+        let layout = row![
+            space().width(Length::FillPortion(3)),
+
+            column![
+                space().height(Length::Fill),
+                link_input,
+                space().height(50),
+                panel,
+                space().height(Length::Fill),
+            ]
+            .width(Length::FillPortion(7))
+            .align_x(Horizontal::Center),
+
+            space().width(Length::FillPortion(3)),
+        ];
        
         let base = column![
             menu,
-            link_input,
-            panel,
-        ]
-        .spacing(30);
+            layout,
+        ];
 
-        // Popups
+        let side_bar = if self.show_side_bar {
+            opaque(
+                container(
+                    column![
+                        center(
+                            text(translation.info_panel_side_bar_title)
+                                .size(25),
+                        )
+                        .width(Length::Fill)
+                        .height(Length::Shrink),
+
+                        space().height(10),
+                            
+                        scrollable(
+                            column![
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                                "HELLO",
+                            ]
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Center),
+                        ),
+                    ],
+                )
+                .style(|_| {
+                    container::Style {
+                        background: Some(
+                            Color {
+                                a: 0.2,
+                                ..Color::BLACK
+                            }
+                            .into(),
+                        ),
+                        ..Default::default()
+                    }
+                })
+                .height(Length::Fill)
+                .width(Length::FillPortion(2)),
+            )
+        } else {
+            space().into()
+        };
+
+        // Download side bar
+        let side_bar = stack![
+            base,
+
+            row![
+                space().width(Length::FillPortion(7)),
+
+                button(
+                    if self.show_side_bar {
+                        center(image(images.arrow_right.clone()))
+                    } else {
+                        center(image(images.arrow_left.clone()))
+                    }
+                )
+                .width(50)
+                .height(50)
+                .on_press(Message::ShowSideBar(!self.show_side_bar))
+                .style(|theme: &iced::Theme, _| {
+                    let pal = theme.extended_palette();
+                    button::Style {
+                        text_color: pal.background.base.text,
+                        background: Some(
+                            Color {
+                                a: 0.2,
+                                ..Color::BLACK
+                            }
+                            .into(),
+                        ),
+                        ..Default::default()
+                    }
+                }),
+
+                side_bar,
+            ],
+        ];
+
+        self.popups(translation, side_bar)
+    }
+
+    fn popups<'a>(&'a self, translation: &'a Translation, base: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
         let base = if self.popups[POPUP_CREDITS].is_visible() {
             let popup = 
                 self.popups[POPUP_CREDITS].view(
@@ -293,11 +495,14 @@ impl Screen {
                         text("Fathema Khanom - Flaticon"),
                         text("paonkz - Flaticon"),
                         text("Roundicons - Flaticon"),
+                        text("Freepik - Flaticon"),
+                        text("ariefstudio - Flaticon"),
+                        text("joalfa - Flaticon"),
                     ]
                     .align_x(Horizontal::Center),
                     vec![translation.general_close],
                     400,
-                    200,
+                    300,
                );
 
             modal(base, popup.map(Message::PopupMessage))

@@ -30,8 +30,43 @@ impl std::fmt::Display for Theme {
             Theme::Auto => "Auto",
         };
 
-        write!(f, "{s}")
+        f.write_str(s)
     }
+}
+
+#[derive(Default, Clone, Copy, Serialize, Deserialize, Debug, PartialEq, PartialOrd, Ord, Eq)]
+pub enum AudioConversionQuality {
+    High,
+    #[default]
+    Medium,
+    Low,
+}
+
+impl std::fmt::Display for AudioConversionQuality {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::High => "High",
+            Self::Medium => "Medium",
+            Self::Low => "Low",
+        };
+
+        f.write_str(s)
+    }
+}
+
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
+pub struct SponsorBlockOption {
+    pub sb_sponsor: bool,
+    pub sb_intro: bool,
+    pub sb_outro: bool,
+    pub sb_selfpromo: bool,
+    pub sb_preview: bool,
+    pub sb_filler: bool,
+    pub sb_interaction: bool,
+    pub sb_music_offtopic: bool,
+    pub sb_hook: bool,
+    pub sb_chapter: bool,
+    pub sb_all: bool,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone)]
@@ -42,9 +77,15 @@ pub struct Settings {
 
     // info_panel stuff
     pub audio_only: bool,
+    pub remux: bool,
+    pub conversion_quality: AudioConversionQuality,
     pub audio_format: command::yt_dlp::AudioFileType,
     pub video_format: command::yt_dlp::VideoFileType,
     pub download_dir: String,
+
+    // Sponsorblock stuff
+    pub sponsor_block: bool,
+    pub sb_options: SponsorBlockOption,
 }
 
 #[derive(Default)]
@@ -70,4 +111,9 @@ pub struct Images {
     pub paste: Handle,
     pub arrow_left: Handle,
     pub arrow_right: Handle,
+    pub close: Handle,
+    pub play: Handle,
+    pub pause: Handle,
+    pub download: Handle,
+    pub folder: Handle,
 }
