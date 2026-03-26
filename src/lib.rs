@@ -77,7 +77,6 @@ pub struct Settings {
 
     // info_panel stuff
     pub audio_only: bool,
-    pub remux: bool,
     pub conversion_quality: AudioConversionQuality,
     pub audio_format: command::yt_dlp::AudioFileType,
     pub video_format: command::yt_dlp::VideoFileType,

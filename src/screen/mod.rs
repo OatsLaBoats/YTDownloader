@@ -1,6 +1,8 @@
 pub mod home;
 pub mod update;
 
+use std::time::Duration;
+
 use iced::{Color, Element, Length};
 use iced::widget::*;
 
@@ -14,6 +16,8 @@ impl Default for Screen {
         Self::Update(update::Screen::default())
     }
 }
+
+const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
 
 // Common widgets
 fn modal<'a, Message: 'a>(

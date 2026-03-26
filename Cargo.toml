@@ -11,6 +11,7 @@ iced_aw = { version = "0.13.1", features = ["full"] }
 windows = { version = "0.62.2", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_Globalization",
+  "Win32_UI_Shell",
 ]}
 
 serde = { version = "1.0.228", features = ["derive"] }

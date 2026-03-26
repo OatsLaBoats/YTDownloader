@@ -15,7 +15,6 @@ use yt_downloader::screen::update::UpdateKind;
 use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
-// TODO: Write the settings file out when settings change
 // TODO: Settings migration mechanism for when settings change
 // TODO: Check for main executable update
 // TODO: Imporve logging with tags
@@ -24,8 +23,10 @@ use yt_downloader::platform::windows::*;
 // TODO: Integrity check before update check
 // TODO: Include updated process maybe as fallback
 // TODO: Change window decorations for update screen
-// TODO: Remove tags it adds them on it's own
-// TODO: Sponsorblock
+// TODO: Remove tags it adds them on it's own, unless it is needes for example for common files
+// TODO: Update reliability imporvement
+// TODO: Script reliabilty imrpovement
+// TODO: German translation
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -216,7 +217,6 @@ impl State {
             ui_theme: Theme::Auto,
 
             audio_only: false,
-            remux: false,
             conversion_quality: AudioConversionQuality::Medium,
             audio_format: command::yt_dlp::AudioFileType::MP3,
             video_format: command::yt_dlp::VideoFileType::MP4,

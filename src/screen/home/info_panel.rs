@@ -6,7 +6,7 @@ use iced::widget::*;
 use iced::widget::column;
 use tracing::{error, info};
 
-use crate::screen::home::download::DownloadInfo;
+use crate::screen::home::download::{AudioDownloadInfo, DownloadInfo, VideoDownloadInfo};
 use crate::screen::home::tasks::open_file_picker;
 use crate::widget::circular::Circular;
 use crate::{AudioConversionQuality, Images, Paths, Settings};
@@ -35,6 +35,7 @@ pub struct State {
 
     task_handle: Option<iced::task::Handle>,
     retry: bool,
+    force_ipv4: bool,
     link: String,
     download_link: String,
 }
@@ -60,7 +61,6 @@ pub enum Message {
 
     VideoQualitySelected(VideoQuality),
     VideoFormatSelected(VideoFileType),
-    RemuxToggled(bool),
 
     AudioConversionQualitySelected(AudioConversionQuality),
     AudioFormatSelected(AudioFileType),
@@ -100,6 +100,7 @@ impl State {
             loading_playlist_link_info: false,
             task_handle: None,
             retry: true,
+            force_ipv4: false,
             link: String::new(),
             download_link: String::new(),
         }
@@ -119,6 +120,7 @@ impl State {
         self.playlist_link_info = None;
         self.loading_playlist_link_info = false;
         self.retry = true;
+        self.force_ipv4 = false;
         self.link = link.clone();
 
         match url::Url::parse(&link) {
@@ -157,6 +159,7 @@ impl State {
             },
             
             Message::OpenFilePicker => {
+                info!("opening file picker");
                 Action::Run(
                     Task::perform(
                         open_file_picker(self.settings.download_dir.clone()),
@@ -240,11 +243,6 @@ impl State {
                 Action::SettingsChanged(self.settings.clone())
             },
             
-            Message::RemuxToggled(b) => {
-                self.settings.remux = b;
-                Action::SettingsChanged(self.settings.clone())
-            },
-            
             Message::Download(i) => {
                 Action::Download(i)
             },
@@ -305,6 +303,7 @@ impl State {
                 match r {
                     Ok(v) => {
                         info!("playlist link info retrieved successfully");
+                        self.force_ipv4 = !self.retry;
 
                         match &v {
                             LinkInfo::Video(i) => {
@@ -370,6 +369,7 @@ impl State {
                         info!("link info retrieved successfully");
                         self.download_link.clear();
                         self.download_link.push_str(&self.link);
+                        self.force_ipv4 = !self.retry;
 
                         match &v {
                             LinkInfo::Video(i) => {
@@ -410,7 +410,7 @@ impl State {
                                     self.paths.deno_exe.clone(),
                                     self.link.clone(),
                                 ),
-                                Message::PlaylistLinkInfoQueryFinished,
+                                Message::LinkInfoQueryFinished,
                             ).abortable();
 
                             self.task_handle = Some(handle);
@@ -632,16 +632,15 @@ impl State {
             )
             .on_press(
                 Message::Download(
-                    DownloadInfo::Audio {
+                    DownloadInfo::Audio(AudioDownloadInfo {
                         info: info.clone(),
                         conversion_quality: self.settings.conversion_quality,
                         selected_format: self.settings.audio_format.clone(),
-                        extract_from_video: false,
-                        remux: false,
                         sb_options,
                         download_location: self.settings.download_dir.clone(),
                         link: self.download_link.clone(),
-                    },
+                        force_ipv4: self.force_ipv4,
+                    }),
                 ),
             ),
         ]
@@ -673,12 +672,6 @@ impl State {
         } else {
             space().into()
         };
-
-        let cb_remux: Element<'a, Message> =
-            checkbox(self.settings.remux)
-                .label("Remux")
-                .on_toggle(Message::RemuxToggled)
-                .into();
 
         let cb_sponsor_block: Element<'a, Message> =
             checkbox(self.settings.sponsor_block)
@@ -753,8 +746,6 @@ impl State {
             row![
                 cb_audio_only,
                 space().width(20),
-                cb_remux,
-                space().width(20),
                 cb_sponsor_block,
             ]
             .align_y(Vertical::Center),
@@ -795,26 +786,25 @@ impl State {
             .on_press(
                 Message::Download(
                     if self.settings.audio_only && info.has_audio {
-                        DownloadInfo::Audio {
+                        DownloadInfo::Audio(AudioDownloadInfo {
                             info: info.to_audio_info(),
                             conversion_quality: self.settings.conversion_quality,
                             selected_format: self.settings.audio_format.clone(),
-                            extract_from_video: true,
-                            remux: self.settings.remux,
                             sb_options,
                             download_location: self.settings.download_dir.clone(),
                             link: self.download_link.clone(),
-                        }
+                            force_ipv4: self.force_ipv4,
+                        })
                     } else {
-                        DownloadInfo::Video {
+                        DownloadInfo::Video(VideoDownloadInfo {
                             info: info.clone(),
                             selected_format: self.settings.video_format.clone(),
                             selected_quality: self.selected_video_quality.clone(),
-                            remux: self.settings.remux,
                             sb_options,
                             download_location: self.settings.download_dir.clone(),
                             link: self.download_link.clone(),
-                        }
+                            force_ipv4: self.force_ipv4,
+                        })
                     },
                 ),
             ),

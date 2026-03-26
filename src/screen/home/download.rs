@@ -1,38 +1,57 @@
-use iced::Element;
-use iced::Task;
-use iced::widget::*;
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::command::yt_dlp::{AudioFileType, AudioInfo, VideoFileType, VideoInfo, VideoQuality};
-use crate::{AudioConversionQuality, SponsorBlockOption};
+use iced::alignment::{Horizontal, Vertical};
+use iced::{Element, Length, Task, color, never};
+use iced::widget::*;
+use iced::widget::column;
+use tracing::{info, error};
+
+use crate::command::yt_dlp::{AudioDownloadParams, AudioFileType, AudioInfo, DownloadParams, DownloadProgress, VideoDownloadParams, VideoFileType, VideoInfo, VideoQuality, download_media};
+use crate::lang::Translation;
+use crate::{AudioConversionQuality, Images, Paths, SponsorBlockOption};
+use crate::widget::linear::Linear;
 
 #[derive(Debug, Clone)]
 pub enum DownloadInfo {
-    Video {
-        info: VideoInfo,
-        selected_format: VideoFileType,
-        selected_quality: VideoQuality,
-        remux: bool,
-        sb_options: Option<SponsorBlockOption>,
-        download_location: String,
-        link: String,
-    },
-
-    Audio {
-        info: AudioInfo,
-        conversion_quality: AudioConversionQuality,
-        selected_format: AudioFileType,
-        extract_from_video: bool,
-        remux: bool,
-        sb_options: Option<SponsorBlockOption>,
-        download_location: String,
-        link: String,
-    },
+    Video(VideoDownloadInfo),
+    Audio(AudioDownloadInfo),
 }
 
+#[derive(Debug, Clone)]
+pub struct AudioDownloadInfo {
+    pub info: AudioInfo,
+    pub conversion_quality: AudioConversionQuality,
+    pub selected_format: AudioFileType,
+    pub sb_options: Option<SponsorBlockOption>,
+    pub download_location: String,
+    pub link: String,
+    pub force_ipv4: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct VideoDownloadInfo {
+    pub info: VideoInfo,
+    pub selected_format: VideoFileType,
+    pub selected_quality: VideoQuality,
+    pub sb_options: Option<SponsorBlockOption>,
+    pub download_location: String,
+    pub link: String,
+    pub force_ipv4: bool,
+}
+
+#[derive(Debug, Clone)]
 pub enum MessageKind {
-    
+    Working(DownloadProgress),
+    Finished(std::result::Result<(), ()>),
+    Cleanup(()),
+    Pause,
+    Close,
+    OpenFolder,
+    Debug,
 }
 
+#[derive(Debug, Clone)]
 pub struct Message {
     pub id: usize,
     pub kind: MessageKind,
@@ -44,6 +63,34 @@ impl Message {
             id,
             kind,
         }
+    }
+
+    pub fn debug(id: usize) -> Self {
+        Self::new(id, MessageKind::Debug)
+    }
+
+    pub fn pause(id: usize) -> Self {
+        Self::new(id, MessageKind::Pause)
+    }
+
+    pub fn close(id: usize) -> Self {
+        Self::new(id, MessageKind::Close)
+    }
+
+    pub fn open_folder(id: usize) -> Self {
+        Self::new(id, MessageKind::OpenFolder)
+    }
+
+    pub fn cleanup(id: usize) -> impl FnMut(()) -> Message {
+        move |p| Self::new(id, MessageKind::Cleanup(p))
+    }
+
+    pub fn working(id: usize) -> impl FnMut(DownloadProgress) -> Message {
+        move |progress| Self::new(id, MessageKind::Working(progress))
+    }
+
+    pub fn finished(id: usize) -> impl FnMut(std::result::Result<(), ()>) -> Message {
+        move |result| Self::new(id, MessageKind::Finished(result))
     }
 }
 
@@ -67,36 +114,424 @@ impl Action {
     }
 
     pub fn none(id: usize) -> Self {
-        Action::new(id, ActionKind::None)
+        Self::new(id, ActionKind::None)
     }
 
     pub fn close(id: usize) -> Self {
-        Action::new(id, ActionKind::Close)
+        Self::new(id, ActionKind::Close)
     }
 
     pub fn run(id: usize, task: Task<Message>) -> Self {
-        Action::new(id, ActionKind::Run(task))
+        Self::new(id, ActionKind::Run(task))
     }
+}
+
+#[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone)]
+enum ProgressState {
+    Starting,
+    Downloading,
+    PostProcessing,
+    Finished(bool),
 }
 
 pub struct State {
     id: usize,
+    paths: Arc<Paths>,
     info: DownloadInfo,
+
+    paused: bool,
+    progress_state: ProgressState,
+    task: Option<iced::task::Handle>,
+
+    tmp_file_name: Option<String>,
+    total_bytes: usize,
+    total_bytes_estimate: f64,
+    downloaded_bytes: usize,
+    eta: u32,
+    download_speed: usize,
+    percent: f64,
 }
 
 impl State {
-    pub fn new(id: usize, info: DownloadInfo) -> Self {
+    pub fn new(id: usize, paths: Arc<Paths>, info: DownloadInfo) -> Self {
         Self {
             id,
+            paths,
             info,
+
+            paused: false,
+            progress_state: ProgressState::Starting,
+            task: None,
+
+            tmp_file_name: None,
+            total_bytes: 0,
+            downloaded_bytes: 0,
+            eta: 0,
+            download_speed: 0,
+            total_bytes_estimate: 0.0,
+            percent: 0.0,
         }
     }
 
-    pub fn update(&mut self, message: MessageKind) -> Action {
-        Action::none(self.id)
+    pub fn start(&mut self) -> Task<Message> {
+        let output_path;
+        let link_;
+
+        let params;
+        let force_ipv4;
+
+        match &self.info {
+            DownloadInfo::Video(vi) => {
+                output_path = &vi.download_location;
+                link_ = vi.link.clone();
+                force_ipv4 = vi.force_ipv4;
+
+                params = DownloadParams::Video(VideoDownloadParams {
+                    quality: vi.selected_quality.clone(),
+                    format: vi.selected_format.clone(),
+                    sb_options: vi.sb_options.clone(),
+                });
+            },
+
+            DownloadInfo::Audio(ai) => {
+                output_path = &ai.download_location;
+                link_ = ai.link.clone();
+                force_ipv4 = ai.force_ipv4;
+
+                params = DownloadParams::Audio(AudioDownloadParams {
+                    quality: ai.conversion_quality.clone(),
+                    format: ai.selected_format.clone(),
+                    sb_options: ai.sb_options.clone(),
+                });
+            },
+        }
+        
+        let sip = download_media(
+            self.paths.yt_dlp_exe.clone(),
+            self.paths.ffmpeg_bin_dir.clone(),
+            self.paths.deno_exe.clone(),
+            output_path.clone(),
+            link_,
+            force_ipv4,
+            params,
+        );
+
+        let (task, handle) = Task::sip(
+            sip,
+            Message::working(self.id),
+            Message::finished(self.id),
+        )
+        .abortable();
+
+        self.task = Some(handle);
+
+        task
     }
 
-    pub fn view(&self) -> Element<'_, Message> {
-        space().into()
+    pub fn update(&mut self, message: MessageKind) -> Action {
+        match message {
+            MessageKind::Cleanup(()) => {
+                Action::close(self.id)
+            },
+            
+            MessageKind::OpenFolder => {
+                let dir = match &self.info {
+                    DownloadInfo::Video(v) => {
+                        v.download_location.clone()
+                    },
+
+                    DownloadInfo::Audio(v) => {
+                        v.download_location.clone()
+                    },
+                };
+
+                match crate::platform::windows::open_file_explorer(&dir) {
+                    Ok(_) => {},
+                    Err(e) => error!("failed to open file explorer -> {e}"),
+                }
+
+                Action::none(self.id)
+            },
+
+            MessageKind::Close => {
+                if let ProgressState::Finished(_) = self.progress_state {
+                    return Action::close(self.id);
+                }
+
+                // TODO: This doesn't seem to always cancel it
+                if let Some(h) = &self.task && !h.is_aborted() {
+                    h.abort();
+                }
+                
+                let (title, dir) = match &self.info {
+                    DownloadInfo::Video(v) => {
+                        if let Some(i) = &v.info.title {
+                            (i.clone(), v.download_location.clone())
+                        } else {
+                            return Action::close(self.id);
+                        }
+                    },
+
+                    DownloadInfo::Audio(v) => {
+                        if let Some(i) = &v.info.title {
+                            (i.clone(), v.download_location.clone())
+                        } else {
+                            return Action::close(self.id);
+                        }
+                    },
+                };
+
+                // Doens't really work there is some weird naming convention
+                let task = Task::perform(
+                    async move {
+                        let _ = tokio::task::block_in_place(move || {
+                            let d = std::fs::read_dir(dir);
+                            if d.is_err() { return () };
+
+                            let paths = d.unwrap()
+                                .filter_map(|r| r.ok())
+                                .map(|de| de.path())
+                                .filter_map(|p| {
+                                    let Some(n) = p.file_name() else {
+                                        return None;
+                                    };
+
+                                    let Some(n) = n.to_str() else {
+                                        return None;
+                                    };
+
+                                    if n.starts_with(&title) {
+                                        Some(p)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>();
+
+                            info!("{paths:?}");
+                            for p in paths {
+                                let _ = std::fs::remove_file(p);
+                            }
+
+                            ()
+                        });
+                    },
+
+                    Message::cleanup(self.id),
+                );
+                
+                Action::run(self.id, task)
+            },
+
+            MessageKind::Pause => {
+                self.paused = !self.paused;
+
+                if self.paused {
+                    if let Some(h) = &self.task && !h.is_aborted() {
+                        h.abort();
+                    }
+
+                    Action::none(self.id)
+                } else {
+                    let task = self.start();
+                    Action::run(self.id, task)
+                }
+            },
+
+            MessageKind::Working(progress) => {
+                match progress {
+                    DownloadProgress::Starting => {
+                        self.progress_state = ProgressState::Starting;
+                    },
+        
+                    DownloadProgress::Downloading(p) => {
+                        if self.tmp_file_name.is_none() {
+                            self.tmp_file_name = p.tmp_file_name;
+                        }
+
+                        if let Some(v) = p.total_bytes {
+                            self.total_bytes = v;
+                        }
+
+                        if let Some(v) = p.downloaded_bytes {
+                            self.downloaded_bytes = v;
+                        }
+
+                        if let Some(v) = p.eta {
+                            self.eta = v;
+                        }
+
+                        if let Some(v) = p.download_speed {
+                            self.download_speed = v;
+                        }
+
+                        if let Some(v) = p.total_bytes_estimate {
+                            self.total_bytes_estimate = v;
+                        }
+
+                        if let Some(v) = p.percent {
+                            self.percent = v;
+                        }
+
+                        if self.percent == 100.0 {
+                            self.progress_state = ProgressState::PostProcessing;
+                        } else {
+                            self.progress_state = ProgressState::Downloading;
+                        }
+                    },
+                }
+
+                Action::none(self.id)
+            },
+
+            MessageKind::Finished(result) => {
+                self.progress_state = ProgressState::Finished(result.is_err());
+                Action::none(self.id)
+            },
+
+            MessageKind::Debug => Action::none(self.id),
+        }
+    }
+
+    pub fn view(&self, translation: &Translation, images: &Images) -> Element<'_, Message> {
+        let eta_minutes = self.eta / 60;
+        let eta_seconds = self.eta - eta_minutes;
+
+        let bar: Element<'_, Message> = if self.progress_state == ProgressState::Downloading {
+            container(progress_bar(0.0f32..=100.0f32, self.percent as f32))
+                .height(10)
+                .into()
+        } else if let ProgressState::Finished(_) = self.progress_state {
+            space().into()
+        } else {
+            Linear::new()
+                .into()
+        };
+
+        let status: Element<'_, Message> = match self.progress_state {
+            ProgressState::Starting => text("Starting").into(),
+            ProgressState::Downloading => text("Downloading").into(),
+            ProgressState::PostProcessing => text("Re-Encoding").into(),
+            ProgressState::Finished(error) => if error {
+                rich_text![
+                    span("Download failed")
+                        .color(color!(0xff0000)),
+                ]
+                .on_link_click(never)
+                .into()
+            } else {
+                text("Finished").into()
+            },
+        };
+
+        let title: &str = match &self.info {
+            DownloadInfo::Video(v) => {
+                if let Some(v) = &v.info.title {
+                    &v
+                } else {
+                    translation.general_unknown
+                }
+            },
+
+            DownloadInfo::Audio(v) => {
+                if let Some(v) = &v.info.title {
+                    &v
+                } else {
+                    translation.general_unknown
+                }
+            },
+        };
+
+        let close_button: Element<'_, Message> =
+            if self.progress_state == ProgressState::PostProcessing {
+                space().into()
+            } else {
+                button(
+                    center(image(images.close.clone()))
+                        .width(20)
+                        .height(20),
+                )
+                .on_press(Message::close(self.id))
+                .into()
+            };
+
+        let action_button: Element<'_, Message> =
+            if self.progress_state == ProgressState::PostProcessing {
+                space().into()
+            } else if let ProgressState::Finished(_) = self.progress_state {
+                button(
+                    center(image(images.folder.clone()))
+                        .width(20)
+                        .height(20),
+                )
+                .on_press(Message::open_folder(self.id))
+                .into()
+            } else if self.paused {
+                button(
+                    center(image(images.play.clone()))
+                        .width(20)
+                        .height(20),
+                )
+                .on_press(Message::pause(self.id))
+                .into()
+            } else {
+                button(
+                    center(image(images.pause.clone()))
+                        .width(20)
+                        .height(20),
+                )
+                .on_press(Message::pause(self.id))
+                .into()
+            };
+
+        let eta: Element<'_, Message> = if eta_seconds == 0 && eta_minutes == 0 {
+            space().into()
+        } else {
+            text(format!("{:02}:{:02}", eta_minutes, eta_seconds)).into()
+        };
+
+        let eta_space = if eta_seconds == 0 && eta_minutes == 0 {
+            space()
+        } else {
+            space().width(5)
+        };
+        
+        center(
+            column![
+                row![
+                    text(title),
+                ]
+                .align_y(Vertical::Center),
+
+                row![
+                    space().width(10),
+                    row![
+                        bar,
+                        eta_space,
+                        eta,
+                    ]
+                    .align_y(Vertical::Center),
+                    space().width(10),
+                ],
+
+                row![
+                    status,
+                ]
+                .align_y(Vertical::Center),
+
+                row![
+                    action_button,
+                    close_button,
+                ]
+                .spacing(5)
+                .align_y(Vertical::Center),
+
+                space().height(5),
+                rule::horizontal(1),
+            ]
+            .spacing(5)
+            .align_x(Horizontal::Center),
+        )
+        .into()
     }
 }

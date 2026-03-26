@@ -8,6 +8,9 @@ pub enum Error {
     #[error("failed to spawn deno process")]
     SpawnDenoFailed(Arc<std::io::Error>),
 
+    #[error("deno returned a non zero exit code")]
+    DenoCommandFailed,
+
     #[error("failed to convert bytes to utf8")]
     ConvertBytesToUTF8Failed,
 }
@@ -20,22 +23,28 @@ pub async fn query_version(deno_path: impl AsRef<OsStr>) -> Result<String> {
         .arg("--version")
         .output().await.map_err(|e|
             Error::SpawnDenoFailed(Arc::new(e))
-        )?
-        .stdout;
+        )?;
+
+    let output = result.stdout;
+    let status = result.status;
+
+    if !status.success() {
+        return Err(Error::DenoCommandFailed);
+    }
 
     let mut end_index = 10;
 
     // Handle the minor version being in the double digits
-    if (result[end_index - 2] as char).is_ascii_digit() {
+    if (output[end_index - 2] as char).is_ascii_digit() {
         end_index += 1;
     }
 
     // Handle the patch version being in the double digits
-    if (result[end_index] as char).is_ascii_digit() {
+    if (output[end_index] as char).is_ascii_digit() {
         end_index += 1;
     }
 
-    let version_slice = str::from_utf8(&result[5..end_index]).map_err(|_|
+    let version_slice = str::from_utf8(&output[5..end_index]).map_err(|_|
         Error::ConvertBytesToUTF8Failed
     )?;
 

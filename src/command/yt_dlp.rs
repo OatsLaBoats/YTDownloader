@@ -2,13 +2,21 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use iced::task::{Straw, sipper};
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tracing::{info, error};
+
+use crate::{AudioConversionQuality, SponsorBlockOption};
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
     #[error("failed to spawn yt-dlp process")]
     SpawnYtDlpFailed(Arc<std::io::Error>),
+
+    #[error("yt-dlp returned a non zero exit code")]
+    YtDlpCommandFailed,
 
     #[error("link is invalid")]
     InvalidLink,
@@ -25,15 +33,203 @@ pub async fn query_version(yt_dlp_path: impl AsRef<OsStr>) -> Result<String> {
         .kill_on_drop(true)
         .output().await.map_err(|e|
             Error::SpawnYtDlpFailed(Arc::new(e))
-        )?
-        .stdout;
+        )?;
+    
+    let output = result.stdout;
+
+    if !result.status.success() {
+        return Err(Error::YtDlpCommandFailed);
+    }
     
     // Cut the /r/n at the end
-    let version_slice = str::from_utf8(&result).map_err(|_|
+    let version_slice = str::from_utf8(&output).map_err(|_|
         Error::ConvertBytesToUTF8Failed
     )?.trim_end_matches(&['\r', '\n']);
 
     Ok(version_slice.to_string())
+}
+
+#[derive(Debug, Clone)]
+pub enum DownloadProgress {
+    Starting,
+    Downloading(ProgressDownloading),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProgressDownloading {
+    pub tmp_file_name: Option<String>,
+    pub eta: Option<u32>,
+    pub download_speed: Option<usize>,
+    pub downloaded_bytes: Option<usize>,
+    pub total_bytes: Option<usize>,
+    pub total_bytes_estimate: Option<f64>,
+    pub percent: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub enum DownloadParams {
+    Video(VideoDownloadParams),
+    Audio(AudioDownloadParams),
+}
+
+#[derive(Debug, Clone)]
+pub struct VideoDownloadParams {
+    pub quality: VideoQuality,
+    pub format: VideoFileType,
+    pub sb_options: Option<SponsorBlockOption>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AudioDownloadParams {
+    pub quality: AudioConversionQuality,
+    pub format: AudioFileType,
+    pub sb_options: Option<SponsorBlockOption>,
+}
+
+pub fn download_media(
+    yt_dlp_path: PathBuf,
+    ffmpeg_path: PathBuf,
+    deno_path: PathBuf,
+
+    output_path: String,
+    link: String,
+    force_ipv4: bool,
+    params: DownloadParams,
+) -> impl Straw<(), DownloadProgress, ()> {
+    sipper(async move |mut progress| {
+        progress.send(DownloadProgress::Starting).await;
+        
+        let mut command = tokio::process::Command::new(&yt_dlp_path);
+        command
+            .arg(&link)
+            .arg("--no-playlist")
+            .arg("--no-mtime")
+            .arg("--ffmpeg-location")
+            .arg(&ffmpeg_path)
+            .arg("--no-js-runtimes")
+            .arg("--js-runtimes")
+            .arg(format!("deno:{}", deno_path.to_string_lossy()))
+            .arg("--newline")
+            .arg("-q")
+            .arg("--progress")
+            .arg("--progress-delta")
+            .arg("0.2")
+            .arg("--progress-template")
+            .arg("\
+                OK\
+                |_|%(progress.tmpfilename)s\
+                |_|%(progress.eta)s\
+                |_|%(progress.speed)s\
+                |_|%(progress.total_bytes_estimate)s\
+                |_|%(progress.total_bytes)s\
+                |_|%(progress.downloaded_bytes)s\
+                |_|%(progress._percent)s\
+                |_|\
+            ")
+            .arg("-o")
+            .arg(format!("{output_path}\\%(title)s.%(ext)s"))
+            .kill_on_drop(true)
+            .stdout(std::process::Stdio::piped());
+
+        if force_ipv4 {
+            info!("DOWNLOAD_MEDIA: forcing ipv4");
+            command.arg("--force-ipv4");
+        }
+
+        match params {
+            DownloadParams::Video(v) => {
+                let mut quality = v.quality.to_string();
+                quality.pop(); // Remove the 'p'
+
+                if v.quality == VideoQuality::Best {
+                    command
+                        .arg("-f")
+                        .arg(format!("bv*[ext={}]+ba/b", v.format));
+                } else {
+                    command
+                        .arg("-f")
+                        .arg(format!("bv*[height={}][ext={}]+ba/b[height={}]", quality, v.format, quality));
+                }
+
+                command
+                    .arg("--recode-video")
+                    .arg(format!("{}", v.format));
+            },
+
+            DownloadParams::Audio(v) => {
+                command
+                    .arg("-f")
+                    .arg("ba/ba*/b");
+
+                if v.format == AudioFileType::OGG || v.format == AudioFileType::AIFF || v.format == AudioFileType::MKA {
+                    command
+                        .arg("--recode-video")
+                        .arg(format!("{}", v.format));
+                } else {
+                    command
+                        .arg("--extract-audio")
+                        .arg("--audio-format")
+                        .arg(format!("{}", v.format));
+                }
+            },
+        }
+
+        let mut child = command.spawn().map_err(|e| {
+                error!("DOWNLOAD_MEDIA: failed to spawn yt-dlp process -> {e}");
+                ()
+            })?;
+
+        let Some(stdout) = child.stdout.take() else {
+            error!("DOWNLOAD_MEDIA: failed to take ownership of yt-dlp stdout");
+            return Err(());
+        };
+
+        let mut reader = BufReader::new(stdout).lines();
+
+        while let Some(line) = reader.next_line().await.map_err(|e| {
+            error!("DOWNLOAD_MEDIA: failed to read the next line of the yt-dlp child process -> {e}");
+            ()
+        })? {
+            if !line.starts_with("OK|_|") { continue }
+            let mut it = line.split("|_|");
+            it.next();
+            let temp_file_name = it.next().unwrap();
+            let eta = it.next().unwrap();
+            let speed = it.next().unwrap();
+            let total_bytes_estimate = it.next().unwrap();
+            let total_bytes = it.next().unwrap();
+            let downloaded_bytes = it.next().unwrap();
+            let percent = it.next().unwrap();
+
+            let tmp_file_name = if temp_file_name != "NA" {
+                Some(temp_file_name.to_string())
+            } else {
+                None
+            };
+
+            progress.send(DownloadProgress::Downloading(ProgressDownloading {
+                tmp_file_name,
+                eta: eta.parse().ok(),
+                download_speed: speed.parse().ok(),
+                total_bytes: total_bytes.parse().ok(),
+                total_bytes_estimate: total_bytes_estimate.parse().ok(),
+                downloaded_bytes: downloaded_bytes.parse().ok(),
+                percent: percent.parse().ok(),
+            })).await;
+        }
+
+        match child.wait().await {
+            Ok(s) => {
+                info!("DOWNLOAD_MEDIA: yt-dlp child process exited with status: {s}");
+                Ok(())
+            },
+            
+            Err(e) => {
+                error!("DOWNLOAD_MEDIA: yt-dlp child process encountered and error -> {e}");
+                Err(())
+            },
+        }
+    })
 }
 
 pub async fn query_link_info(
@@ -51,12 +247,12 @@ pub async fn query_link_info(
     };
     
     // |_| is the separator to make parsing easier. It shoudln't conflict with the content of the query.
-    let link_query = tokio::process::Command::new(&yt_dlp_path)
+    let link_query_result = tokio::process::Command::new(&yt_dlp_path)
         .arg(ipv4)
         .arg("--ffmpeg-location")
         .arg(&ffmpeg_path)
         .arg("--js-runtimes")
-        .arg(&deno_path)
+        .arg(format!("deno:{}", deno_path.to_string_lossy()))
         .arg("--flat-playlist")
         .arg("-I")
         .arg("1:1")
@@ -78,8 +274,12 @@ pub async fn query_link_info(
         .kill_on_drop(true)
         .output().await.map_err(|e|
             Error::SpawnYtDlpFailed(Arc::new(e))
-        )?
-        .stdout;
+        )?;
+
+    let link_query = link_query_result.stdout;
+    if !link_query_result.status.success() {
+        return Err(Error::YtDlpCommandFailed);
+    }
 
     let link_basic_info = str::from_utf8(&link_query).map_err(|_|
         Error::ConvertBytesToUTF8Failed
@@ -104,12 +304,12 @@ pub async fn query_link_info(
 
     // If it succeeds we know it's a playlist
     if playlist_id != "NA" && playlist_name != "NA" {
-        let playlist_query = tokio::process::Command::new(&yt_dlp_path)
+        let playlist_query_result = tokio::process::Command::new(&yt_dlp_path)
             .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
             .arg("--js-runtimes")
-            .arg(&deno_path)
+            .arg(format!("deno:{}", deno_path.to_string_lossy()))
             .arg("--flat-playlist")
             .arg("--print")
             .arg("\
@@ -122,8 +322,12 @@ pub async fn query_link_info(
             .kill_on_drop(true)
             .output().await.map_err(|e|
                 Error::SpawnYtDlpFailed(Arc::new(e))
-            )?
-            .stdout;
+            )?;
+
+        let playlist_query = playlist_query_result.stdout;
+        if !playlist_query_result.status.success() {
+            return Err(Error::YtDlpCommandFailed);
+        }
 
         let playlist_info = str::from_utf8(&playlist_query).map_err(|_|
             Error::ConvertBytesToUTF8Failed
@@ -158,12 +362,12 @@ pub async fn query_link_info(
             ),
         );
     } else if vcodec != "none" {
-        let video_query = tokio::process::Command::new(&yt_dlp_path)
+        let video_query_result = tokio::process::Command::new(&yt_dlp_path)
             .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
             .arg("--js-runtimes")
-            .arg(&deno_path)
+            .arg(format!("deno:{}", deno_path.to_string_lossy()))
             .arg("--print")
             .arg("\
                 OK\
@@ -192,8 +396,12 @@ pub async fn query_link_info(
             .kill_on_drop(true)
             .output().await.map_err(|e|
                 Error::SpawnYtDlpFailed(Arc::new(e))
-            )?
-            .stdout;
+            )?;
+
+        let video_query = video_query_result.stdout;
+        if !video_query_result.status.success() {
+            return Err(Error::YtDlpCommandFailed);
+        }
 
         let video_info = str::from_utf8(&video_query).map_err(|_|
             Error::ConvertBytesToUTF8Failed
@@ -369,12 +577,12 @@ pub async fn query_link_info(
             ),
         );
     } else if acodec != "none" {
-        let audio_query = tokio::process::Command::new(&yt_dlp_path)
+        let audio_query_result = tokio::process::Command::new(&yt_dlp_path)
             .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
             .arg("--js-runtimes")
-            .arg(&deno_path)
+            .arg(format!("deno:{}", deno_path.to_string_lossy()))
             .arg("--print")
             .arg("\
                 OK\
@@ -391,8 +599,12 @@ pub async fn query_link_info(
             .kill_on_drop(true)
             .output().await.map_err(|e|
                 Error::SpawnYtDlpFailed(Arc::new(e))
-            )?
-            .stdout;
+            )?;
+
+        let audio_query = audio_query_result.stdout;
+        if !audio_query_result.status.success() {
+            return Err(Error::YtDlpCommandFailed);
+        }
 
         let audio_info = str::from_utf8(&audio_query).map_err(|_|
             Error::ConvertBytesToUTF8Failed
@@ -502,7 +714,6 @@ pub struct VideoInfo {
     pub f_best_audio: Option<VideoFormat>,
 }
 
-// TODO: Give the option between remuxing and converting
 #[derive(Default, Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AudioFileType {
     #[default]
@@ -535,7 +746,7 @@ impl std::fmt::Display for AudioFileType {
             Self::VORBIS => "vorbis",
             Self::AIFF => "aiff",
             Self::MKA => "mka",
-            Self::BEST => "Best",
+            Self::BEST => "best",
         };
 
         write!(f, "{s}")
@@ -627,7 +838,7 @@ impl std::fmt::Display for VideoQuality {
             Self::Q1080 => "1080p",
             Self::Q1440 => "1440p",
             Self::Q2160 => "2160p",
-            Self::Best => "Best",
+            Self::Best => "best",
         };
         
         write!(f, "{s}")

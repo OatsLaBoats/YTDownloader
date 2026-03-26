@@ -2,11 +2,13 @@
 
 use std::ffi::{CString, OsString};
 use std::os::windows::ffi::OsStringExt;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Globalization::*;
 use windows::core::{PCSTR, PWSTR, s};
+use windows::Win32::UI::Shell::*;
 use thiserror::Error;
 
 use crate::lang::Language;
@@ -32,6 +34,19 @@ pub enum Error {
 
     #[error("failed to query the theme from the registry")]
     QueryThemeFailed(windows_result::Error),
+
+    #[error("failed to convert rust string to c string")]
+    ConvertRustStringToCStringFailed,
+}
+
+pub fn open_file_explorer(dir: &str) -> Result<()> {
+    let d = CString::from_str(dir).map_err(|_| Error::ConvertRustStringToCStringFailed)?;
+
+    unsafe {
+        ShellExecuteA(None, s!("open"), PCSTR(d.as_ptr().cast()), PCSTR::null(), PCSTR::null(), SW_SHOW);
+    }
+
+    Ok(())
 }
 
 pub fn get_user_theme() -> Result<iced::Theme> {

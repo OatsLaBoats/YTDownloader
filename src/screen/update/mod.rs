@@ -89,6 +89,7 @@ impl Screen {
                         Er::SpawnPowershellCommandFailed(ie) => error!("{e} {ie}"),
                         Er::OpenRegistryKeyFailed(ie) => error!("{e} {ie}"),
                         Er::QueryThemeFailed(ie) => error!("{e} {ie}"),
+                        _ => {},
                     }
 
                     match self.kind {

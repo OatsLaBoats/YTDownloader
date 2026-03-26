@@ -7,6 +7,7 @@ use iced::widget::column;
 use iced_aw::*;
 use reqwest::Client;
 use tracing::{info, error};
+use ordermap::OrderMap;
 
 use crate::platform::windows::{error_dialog, uninstall};
 use crate::{Images, Paths, Settings};
@@ -19,13 +20,8 @@ mod popup;
 mod menu_bar;
 mod info_panel;
 
-use download::{DownloadInfo};
 use tasks::check_for_updates;
 
-// TODO: Pause, and cancel download buttons
-// You can query progress using _percent, eta, tmpfilename
-// Query video info using templaes instead of json because it seem too error prone
-//
 // TODO: Hide download list when nothing is downloading
 
 struct IdGenerator {
@@ -73,6 +69,7 @@ pub struct Screen {
 
     show_side_bar: bool,
     ids: IdGenerator,
+    downloads: OrderMap<usize, download::State>,
 }
 
 #[derive(Clone, Debug)]
@@ -95,7 +92,8 @@ pub enum Message {
     InfoPanelMessage(info_panel::Message),
 
     ShowSideBar(bool),
-
+    DownloadMessage(download::Message),
+    
     Debug,
 }
 
@@ -127,6 +125,7 @@ impl Screen {
 
             show_side_bar: false,
             ids: IdGenerator::new(),
+            downloads: OrderMap::new(),
         }
     }
 
@@ -143,6 +142,28 @@ impl Screen {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::DownloadMessage(message) => {
+                if let Some(download) = self.downloads.get_mut(&message.id) {
+                    let action = download.update(message.kind);
+                    match action.kind {
+                        download::ActionKind::None => Action::None,
+                        download::ActionKind::Close => {
+                            self.downloads.remove_entry(&message.id);
+                            self.ids.free(message.id);
+                            Action::None
+                        },
+
+                        download::ActionKind::Run(task) => {
+                            Action::Run(
+                                task.map(Message::DownloadMessage),
+                            )
+                        },
+                    }
+                } else {
+                    Action::None
+                }
+            },
+            
             Message::ShowSideBar(b) => {
                 self.show_side_bar = b;
                 Action::None
@@ -166,7 +187,15 @@ impl Screen {
                     info_panel::Action::SettingsChanged(settings) => Action::SettingsChanged(settings),
                     info_panel::Action::Download(info) => {
                         info!("{info:?}");
-                        Action::None
+                        let id = self.ids.id();
+                        let mut download = download::State::new(id, Arc::clone(&self.paths), info);
+                        let task = download.start();
+                        
+                        self.downloads.insert(id, download);
+                        
+                        Action::Run(
+                            task.map(Message::DownloadMessage),
+                        )
                     },
                 }
             },
@@ -301,7 +330,6 @@ impl Screen {
         }
     }
 
-    // TODO: Translate
     pub fn view<'a>(&'a self, translation: &'a Translation, images: &'a Images) -> Element<'a, Message> {
         let panel = self.info_panel.view(translation, images).map(Message::InfoPanelMessage);
 
@@ -348,6 +376,10 @@ impl Screen {
             layout,
         ];
 
+        let downloads = self.downloads.iter().map(|e| {
+            e.1.view(translation, images).map(Message::DownloadMessage)
+        });
+
         let side_bar = if self.show_side_bar {
             opaque(
                 container(
@@ -362,68 +394,9 @@ impl Screen {
                         space().height(10),
                             
                         scrollable(
-                            column![
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                                "HELLO",
-                            ]
-                            .width(Length::Fill)
-                            .align_x(Horizontal::Center),
+                            Column::from_iter(downloads)
+                                .width(Length::Fill)
+                                .align_x(Horizontal::Center),
                         ),
                     ],
                 )
