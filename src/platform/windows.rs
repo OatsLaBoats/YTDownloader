@@ -106,7 +106,29 @@ pub fn error_dialog(text: &str) {
 // 2. Moves the executable to it's AppData/Local location.
 // 3. Creates a shortcut on the desktop.
 // 4. Relaunch the app.
-pub async fn finish_install_process() -> Result<()> {
+pub async fn finish_install_process(
+    yt_dlp_updated: bool,
+    ffmpeg_updated: bool,
+    deno_updated: bool,
+) -> Result<()> {
+    let update_yt_dlp = if yt_dlp_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\yt-dlp.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\bin\";"
+    } else {
+        ""
+    };
+
+    let update_ffmpeg = if ffmpeg_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\ffmpeg\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\bin\";"
+    } else {
+        ""
+    };
+
+    let update_deno = if deno_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\deno.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\bin\";"
+    } else {
+        ""
+    };
+    
     let exe_path = std::env::current_exe().map_err(|e|
         Error::GetExePathFailed(Arc::new(e))
     )?;
@@ -121,7 +143,11 @@ pub async fn finish_install_process() -> Result<()> {
         .arg("-Command")
         .arg(format!(" \
                 Wait-Process -Name yt_downloader; \
+                {update_yt_dlp}\
+                {update_ffmpeg}\
+                {update_deno}\
                 Move-Item -Path {} -Destination \"$env:LOCALAPPDATA\\YT Downloader\\\"; \
+                Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\"; \
                 $WshShell = New-Object -ComObject WScript.Shell; \
                 $Shortcut = $WshShell.CreateShortcut(\"$HOME\\Desktop\\YT Downloader.lnk\"); \
                 $Shortcut.TargetPath = \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
@@ -136,21 +162,54 @@ pub async fn finish_install_process() -> Result<()> {
 }
 
 // The only difference is the removal of the old executable
-pub async fn finish_update_process() -> Result<()> {
+pub async fn finish_update_process(
+    yt_dlp_updated: bool,
+    ffmpeg_updated: bool,
+    deno_updated: bool,
+    app_updated: bool,
+) -> Result<()> {
+    let update_yt_dlp = if yt_dlp_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\yt-dlp.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\bin\";"
+    } else {
+        ""
+    };
+
+    let update_ffmpeg = if ffmpeg_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\ffmpeg\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\bin\";"
+    } else {
+        ""
+    };
+
+    let update_deno = if deno_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\deno.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\bin\";"
+    } else {
+        ""
+    };
+
+    let update_app = if app_updated {
+        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\yt_downloader.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\";"
+    } else {
+        ""
+    };
+    
     tokio::process::Command::new("powershell")
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-Command")
-        .arg(" \
+        .arg(format!(" \
                 Wait-Process -Name yt_downloader; \
+                {update_yt_dlp}\
+                {update_ffmpeg}\
+                {update_deno}\
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
-                Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\yt_downloader.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\\\"; \
+                {update_app}\
+                Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\"; \
                 $WshShell = New-Object -ComObject WScript.Shell; \
                 $Shortcut = $WshShell.CreateShortcut(\"$HOME\\Desktop\\YT Downloader.lnk\"); \
                 $Shortcut.TargetPath = \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
                 $Shortcut.Save(); \
                 Start-Process -FilePath \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
-        ")
+        "))
         .spawn().map_err(|e|
             Error::SpawnPowershellCommandFailed(Arc::new(e))
         )?;

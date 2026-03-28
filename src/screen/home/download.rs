@@ -1,14 +1,14 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
-use iced::{Element, Length, Task, color, never};
+use iced::{Element, Task, color, never};
 use iced::widget::*;
 use iced::widget::column;
 use tracing::{info, error};
 
 use crate::command::yt_dlp::{AudioDownloadParams, AudioFileType, AudioInfo, DownloadParams, DownloadProgress, VideoDownloadParams, VideoFileType, VideoInfo, VideoQuality, download_media};
 use crate::lang::Translation;
+use crate::screen::TOOLTIP_DELAY;
 use crate::{AudioConversionQuality, Images, Paths, SponsorBlockOption};
 use crate::widget::linear::Linear;
 
@@ -101,6 +101,7 @@ pub enum ActionKind {
 }
 
 pub struct Action {
+    #[allow(unused)]
     pub id: usize,
     pub kind: ActionKind,
 }
@@ -246,7 +247,7 @@ impl State {
                 };
 
                 match crate::platform::windows::open_file_explorer(&dir) {
-                    Ok(_) => {},
+                    Ok(_) => info!("opened file explorer"),
                     Err(e) => error!("failed to open file explorer -> {e}"),
                 }
 
@@ -254,6 +255,7 @@ impl State {
             },
 
             MessageKind::Close => {
+                info!("stopping download");
                 if let ProgressState::Finished(_) = self.progress_state {
                     return Action::close(self.id);
                 }
@@ -327,12 +329,14 @@ impl State {
                 self.paused = !self.paused;
 
                 if self.paused {
+                    info!("download paused");
                     if let Some(h) = &self.task && !h.is_aborted() {
                         h.abort();
                     }
 
                     Action::none(self.id)
                 } else {
+                    info!("download resumed");
                     let task = self.start();
                     Action::run(self.id, task)
                 }
@@ -385,6 +389,7 @@ impl State {
             },
 
             MessageKind::Finished(result) => {
+                info!("finished download with state {result:?}");
                 self.progress_state = ProgressState::Finished(result.is_err());
                 Action::none(self.id)
             },
@@ -409,18 +414,18 @@ impl State {
         };
 
         let status: Element<'_, Message> = match self.progress_state {
-            ProgressState::Starting => text("Starting").into(),
-            ProgressState::Downloading => text("Downloading").into(),
-            ProgressState::PostProcessing => text("Re-Encoding").into(),
+            ProgressState::Starting => text(translation.download_status_starting).into(),
+            ProgressState::Downloading => text(translation.download_status_downloading).into(),
+            ProgressState::PostProcessing => text(translation.download_status_re_encoding).into(),
             ProgressState::Finished(error) => if error {
                 rich_text![
-                    span("Download failed")
+                    span(translation.download_status_failed)
                         .color(color!(0xff0000)),
                 ]
                 .on_link_click(never)
                 .into()
             } else {
-                text("Finished").into()
+                text(translation.download_status_finished).into()
             },
         };
 
@@ -446,12 +451,19 @@ impl State {
             if self.progress_state == ProgressState::PostProcessing {
                 space().into()
             } else {
-                button(
-                    center(image(images.close.clone()))
-                        .width(20)
-                        .height(20),
+                tooltip(
+                    button(
+                        center(image(images.close.clone()))
+                            .width(20)
+                            .height(20),
+                    )
+                    .on_press(Message::close(self.id)),
+                    container(translation.tooltip_download_close_desc)
+                        .padding(10)
+                        .style(container::rounded_box),
+                    tooltip::Position::Bottom,
                 )
-                .on_press(Message::close(self.id))
+                .delay(TOOLTIP_DELAY)
                 .into()
             };
 
@@ -459,12 +471,19 @@ impl State {
             if self.progress_state == ProgressState::PostProcessing {
                 space().into()
             } else if let ProgressState::Finished(_) = self.progress_state {
-                button(
-                    center(image(images.folder.clone()))
-                        .width(20)
-                        .height(20),
+                tooltip(
+                    button(
+                        center(image(images.folder.clone()))
+                            .width(20)
+                            .height(20),
+                    )
+                    .on_press(Message::open_folder(self.id)),
+                    container(translation.tooltip_download_open_desc)
+                        .padding(10)
+                        .style(container::rounded_box),
+                    tooltip::Position::Bottom,
                 )
-                .on_press(Message::open_folder(self.id))
+                .delay(TOOLTIP_DELAY)
                 .into()
             } else if self.paused {
                 button(

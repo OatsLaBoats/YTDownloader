@@ -6,6 +6,7 @@ use iced::widget::*;
 use iced::widget::column;
 use tracing::{error, info};
 
+use crate::screen::TOOLTIP_DELAY;
 use crate::screen::home::download::{AudioDownloadInfo, DownloadInfo, VideoDownloadInfo};
 use crate::screen::home::tasks::open_file_picker;
 use crate::widget::circular::Circular;
@@ -159,7 +160,7 @@ impl State {
             },
             
             Message::OpenFilePicker => {
-                info!("opening file picker");
+                info!("opening folder picker");
                 Action::Run(
                     Task::perform(
                         open_file_picker(self.settings.download_dir.clone()),
@@ -244,6 +245,7 @@ impl State {
             },
             
             Message::Download(i) => {
+                info!("stating download");
                 Action::Download(i)
             },
             
@@ -555,6 +557,16 @@ impl State {
                 .on_toggle(Message::SponsorBlockToggled)
                 .into();
 
+        let cb_sponsor_block: Element<'a, Message> = tooltip(
+            cb_sponsor_block,
+            container(translation.tooltip_info_panel_sponsorblock_desc)
+                .padding(10)
+                .style(container::rounded_box),
+            tooltip::Position::Top,
+        )
+        .delay(TOOLTIP_DELAY)
+        .into();
+
         let sponsor_block_options: Element<'a, Message> = if self.settings.sponsor_block {
             self.sponsor_block_options()
         } else {
@@ -678,6 +690,16 @@ impl State {
                 .label("SponsorBlock")
                 .on_toggle(Message::SponsorBlockToggled)
                 .into();
+
+        let cb_sponsor_block: Element<'a, Message> = tooltip(
+            cb_sponsor_block,
+            container(translation.tooltip_info_panel_sponsorblock_desc)
+                .padding(10)
+                .style(container::rounded_box),
+            tooltip::Position::Top,
+        )
+        .delay(TOOLTIP_DELAY)
+        .into();
 
         let sponsor_block_options: Element<'a, Message> = if self.settings.sponsor_block {
             self.sponsor_block_options()

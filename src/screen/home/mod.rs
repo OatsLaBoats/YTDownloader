@@ -22,8 +22,6 @@ mod info_panel;
 
 use tasks::check_for_updates;
 
-// TODO: Hide download list when nothing is downloading
-
 struct IdGenerator {
     cache: Vec<usize>,
     latest: usize,
@@ -165,6 +163,7 @@ impl Screen {
             },
             
             Message::ShowSideBar(b) => {
+                info!("show side bar");
                 self.show_side_bar = b;
                 Action::None
             },
@@ -186,7 +185,7 @@ impl Screen {
                     info_panel::Action::Run(task) => Action::Run(task.map(Message::InfoPanelMessage)),
                     info_panel::Action::SettingsChanged(settings) => Action::SettingsChanged(settings),
                     info_panel::Action::Download(info) => {
-                        info!("{info:?}");
+                        self.show_side_bar = true;
                         let id = self.ids.id();
                         let mut download = download::State::new(id, Arc::clone(&self.paths), info);
                         let task = download.start();
@@ -212,6 +211,7 @@ impl Screen {
             },
             
             Message::ShowPopup(p, b) => {
+                info!("show popup {p} {b}");
                 self.popups[p].set_visibility(b);
                 Action::None
             },
@@ -268,6 +268,7 @@ impl Screen {
             },
 
             Message::LinkInputChanged(s) => {
+                info!("link info changed");
                 self.link_input = s;
 
                 if self.link_input.is_empty() {
@@ -294,11 +295,11 @@ impl Screen {
             Message::UninstallScriptLaunched(r) => {
                 match r {
                     Ok(_) => {
-                        info!("HOME: uninstall script successfully launched");
+                        info!("uninstall script successfully launched");
                         Action::Exit
                     },
                     Err(e) => {
-                        error!("HOME: failed to launch update script -> {e}");
+                        error!("failed to launch update script -> {e}");
                         error_dialog("failed to uninstall");
                         Action::None
                     },
@@ -306,7 +307,7 @@ impl Screen {
             },
 
             Message::PasteLink => {
-                info!("HOME: paste clipboard contents");
+                info!("paste clipboard contents");
                 Action::Run(
                     iced::clipboard::read()
                         .map(Message::ClipboardRead)

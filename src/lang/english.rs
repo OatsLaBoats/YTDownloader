@@ -40,6 +40,16 @@ pub fn new() -> Translation {
         info_panel_playlist_item_placeholder: "Select playlist item...",
         info_panel_download_location_label: "Download location:",
         info_panel_audio_only_checkbox: "Audio only",
-        info_panel_side_bar_title: "Downloads"
+        info_panel_side_bar_title: "Downloads",
+
+        tooltip_info_panel_sponsorblock_desc: "Allows you to cut out sponsored segments from videos",
+        tooltip_download_close_desc: "Cancel download",
+        tooltip_download_open_desc: "Open download folder",
+
+        download_status_downloading: "Downloading",
+        download_status_starting: "Starting",
+        download_status_re_encoding: "Re-encoding",
+        download_status_failed: "Download failed",
+        download_status_finished: "Finished",
     }
 }

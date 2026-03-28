@@ -17,16 +17,9 @@ use yt_downloader::platform::windows::*;
 
 // TODO: Settings migration mechanism for when settings change
 // TODO: Check for main executable update
-// TODO: Imporve logging with tags
-// TODO: Add tooltips
-// TODO: Maybe log the errors inside the async functions instead of returning them outside
-// TODO: Integrity check before update check
-// TODO: Include updated process maybe as fallback
-// TODO: Change window decorations for update screen
 // TODO: Remove tags it adds them on it's own, unless it is needes for example for common files
-// TODO: Update reliability imporvement
-// TODO: Script reliabilty imrpovement
 // TODO: German translation
+// TODO: Fix the cleanup system by dumping everything a folder and then deleting it when done
 
 fn main() -> iced::Result {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
@@ -159,6 +152,15 @@ impl State {
         let mut downloader_dir = appdata_dir.clone();
         downloader_dir.push("YT Downloader");
 
+        let mut tmp_dir = downloader_dir.clone();
+        tmp_dir.push("downloads");
+
+        let mut tmp_ffmpeg_dir = tmp_dir.clone();
+        tmp_ffmpeg_dir.push("ffmpeg");
+
+        let mut tmp_yt_dlp_exe = tmp_dir.clone();
+        tmp_yt_dlp_exe.push("yt-dlp.exe");
+
         let mut bin_dir = downloader_dir.clone();
         bin_dir.push("bin");
 
@@ -202,6 +204,10 @@ impl State {
             ffmpeg_bin_dir,
             deno_exe,
             settings_file,
+
+            tmp_dir,
+            tmp_ffmpeg_dir,
+            tmp_yt_dlp_exe,
 
             old_yt_downloader_exe,
             old_yt_dlp_exe,

@@ -17,7 +17,7 @@ impl Default for Screen {
     }
 }
 
-const TOOLTIP_DELAY: Duration = Duration::from_millis(500);
+const TOOLTIP_DELAY: Duration = Duration::from_millis(400);
 
 // Common widgets
 fn modal<'a, Message: 'a>(

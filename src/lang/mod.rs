@@ -89,4 +89,14 @@ pub struct Translation {
     pub info_panel_download_location_label: Text,
     pub info_panel_audio_only_checkbox: Text,
     pub info_panel_side_bar_title: Text,
+
+    pub tooltip_info_panel_sponsorblock_desc: Text,
+    pub tooltip_download_close_desc: Text,
+    pub tooltip_download_open_desc: Text,
+
+    pub download_status_downloading: Text,
+    pub download_status_starting: Text,
+    pub download_status_re_encoding: Text,
+    pub download_status_failed: Text,
+    pub download_status_finished: Text,
 }

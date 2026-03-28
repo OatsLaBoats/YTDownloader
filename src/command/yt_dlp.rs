@@ -731,7 +731,6 @@ pub enum AudioFileType {
     BEST,
 }
 
-// TODO: Deal with the translation of best
 impl std::fmt::Display for AudioFileType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
