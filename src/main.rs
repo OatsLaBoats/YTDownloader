@@ -1,4 +1,4 @@
-#![windows_subsystem = "console"]
+#![windows_subsystem = "windows"]
 
 use std::io::Write;
 use std::sync::Arc;
@@ -16,7 +16,6 @@ use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
 // TODO: Settings migration mechanism for when settings change
-// TODO: Check for main executable update
 // TODO: Remove tags it adds them on it's own, unless it is needes for example for common files
 // TODO: German translation
 // TODO: Fix the cleanup system by dumping everything a folder and then deleting it when done
@@ -161,6 +160,9 @@ impl State {
         let mut tmp_yt_dlp_exe = tmp_dir.clone();
         tmp_yt_dlp_exe.push("yt-dlp.exe");
 
+        let mut tmp_app_exe = tmp_dir.clone();
+        tmp_app_exe.push("yt_downloader.exe");
+
         let mut bin_dir = downloader_dir.clone();
         bin_dir.push("bin");
 
@@ -208,6 +210,7 @@ impl State {
             tmp_dir,
             tmp_ffmpeg_dir,
             tmp_yt_dlp_exe,
+            tmp_app_exe,
 
             old_yt_downloader_exe,
             old_yt_dlp_exe,

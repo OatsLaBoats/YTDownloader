@@ -16,6 +16,9 @@ pub const FFMPEG_REPO: &str = "FFmpeg-Builds";
 pub const DENO_OWNER: &str = "denoland";
 pub const DENO_REPO: &str = "deno";
 
+pub const APP_OWNER: &str = "OatsLaBoats";
+pub const APP_REPO: &str = "YTDownloader";
+
 pub const API_VERSION: &str = "2026-03-10";
 
 pub async fn query_latest_release(client: Client, owner: &str, repo: &str) -> Result<LatestRelease> {

@@ -5,6 +5,7 @@ use tracing::error;
 use tracing::info;
 
 use crate::Paths;
+use crate::VERSION;
 use crate::github;
 use crate::command::yt_dlp;
 use crate::command::deno;
@@ -39,6 +40,23 @@ pub async fn check_for_updates(paths: Arc<Paths>, client: Client) -> bool {
 
     if !paths.deno_exe.exists() {
         info!("CHECK_FOR_UPDATE: deno executable missing");
+        return true;
+    }
+
+    let latest_app_release = match github::query_latest_release(
+        client.clone(),
+        github::APP_OWNER,
+        github::APP_REPO,
+    ).await {
+        Ok(v) => v,
+        Err(e) => {
+            error!("CHECK_FOR_UPDATE: failed to query latest app release {e}");
+            return false;
+        },
+    };
+
+    if VERSION != latest_app_release.tag_name {
+        info!("CHECK_FOR_UPDATE: app is outdated");
         return true;
     }
 

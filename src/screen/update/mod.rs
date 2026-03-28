@@ -168,9 +168,10 @@ impl Screen {
         };
 
         let asset = match self.current_asset {
-            Asset::YtDlp => "1/3   yt-dlp",
-            Asset::Ffmpeg => "2/3   ffmpeg",
-            Asset::Deno => "3/3   deno",
+            Asset::App => "1/4   app",
+            Asset::YtDlp => "2/4   yt-dlp",
+            Asset::Ffmpeg => "3/4   ffmpeg",
+            Asset::Deno => "4/4   deno",
         };
         
         center(

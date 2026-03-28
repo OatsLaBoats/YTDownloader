@@ -103,6 +103,7 @@ pub struct Paths {
     pub tmp_dir: PathBuf,
     pub tmp_ffmpeg_dir: PathBuf,
     pub tmp_yt_dlp_exe: PathBuf,
+    pub tmp_app_exe: PathBuf,
 
     pub old_yt_downloader_exe: PathBuf,
     pub old_yt_dlp_exe: PathBuf,
