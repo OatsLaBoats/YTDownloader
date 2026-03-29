@@ -1,0 +1,6 @@
+[2m2026-03-29T00:05:26.689663Z[0m [32m INFO[0m [2myt_downloader[0m[2m:[0m Default theme Dark
+[2m2026-03-29T00:05:48.263119Z[0m [32m INFO[0m [2myt_downloader::screen::home[0m[2m:[0m paste clipboard contents
+[2m2026-03-29T00:05:48.268505Z[0m [32m INFO[0m [2myt_downloader::screen::home[0m[2m:[0m link info changed
+[2m2026-03-29T00:05:48.268806Z[0m [32m INFO[0m [2myt_downloader::screen::home::info_panel[0m[2m:[0m querying link info
+[2m2026-03-29T00:05:54.630664Z[0m [32m INFO[0m [2myt_downloader::screen::home::info_panel[0m[2m:[0m link info retrieved successfully
+[2m2026-03-29T00:10:25.587104Z[0m [32m INFO[0m [2myt_downloader[0m[2m:[0m Default theme Dark

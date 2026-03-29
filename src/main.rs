@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::io::AsyncWriteExt;
@@ -16,12 +17,21 @@ use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
 // TODO: Settings migration mechanism for when settings change
-// TODO: Remove tags it adds them on it's own, unless it is needes for example for common files
-// TODO: German translation
-// TODO: Fix the cleanup system by dumping everything a folder and then deleting it when done
+fn ensure_log_dir_exists() -> PathBuf {
+    let Some(mut dir) = dirs::data_local_dir() else { return PathBuf::new() };
+    dir.push("YT Downloader/logs");
+    let _ = std::fs::create_dir_all(std::path::Path::new(&dir));
+
+    return dir;
+}
 
 fn main() -> iced::Result {
+    let log_dir = ensure_log_dir_exists();
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "yt_downloader.log");
+    
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
+        .with_ansi(false)
+        .with_writer(file_appender)
         .with_max_level(tracing::Level::INFO)
         .finish();
 
@@ -196,6 +206,9 @@ impl State {
         let mut old_version_file = downloader_dir.clone();
         old_version_file.push("version");
 
+        let mut video_dir = downloader_dir.clone();
+        video_dir.push("videos");
+
         let paths = Arc::new(Paths {
             downloads_dir,
             appdata_dir,
@@ -206,6 +219,8 @@ impl State {
             ffmpeg_bin_dir,
             deno_exe,
             settings_file,
+
+            video_dir,
 
             tmp_dir,
             tmp_ffmpeg_dir,

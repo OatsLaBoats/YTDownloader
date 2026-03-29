@@ -32,7 +32,7 @@ pub fn download_assets(paths: Arc<Paths>, client: Client) -> impl Straw<UpdateRe
             deno: false,
             app: false,
         };
-        
+      
         if !paths.downloader_dir.exists() {
             tokio::fs::create_dir(&paths.downloader_dir).await.map_err(|e|
                 error!("DOWNLOAD_ASSETS: failed to create root YT Downloader directory -> {e}")

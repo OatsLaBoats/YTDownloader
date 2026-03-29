@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::sync::Arc;
 
 use thiserror::Error;
+use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
@@ -19,6 +20,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub async fn query_version(deno_path: impl AsRef<OsStr>) -> Result<String> {
     let result = tokio::process::Command::new(deno_path)
+        .creation_flags(CREATE_NO_WINDOW.0)
         .kill_on_drop(true)
         .arg("--version")
         .output().await.map_err(|e|

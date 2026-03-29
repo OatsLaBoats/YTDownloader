@@ -78,6 +78,8 @@ impl Screen {
                 let _ = r.inspect_err(|e| {
                     use crate::platform::windows::Error as Er;
                     match e {
+                        Er::OpenProcessFailed(ie) => error!("{e} {ie}"),
+                        Er::TermianteProcessFailed(ie) => error!("{e} {ie}"),
                         Er::GetUserPreferredLanguageFailed(ie) => error!("{e} {ie}"),
                         Er::ConvertOsStringToUTF8Failed => error!("{e}"),
                         Er::GetExePathFailed(ie) => error!("{e} {ie}"),

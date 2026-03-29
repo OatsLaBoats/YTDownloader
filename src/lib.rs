@@ -99,6 +99,8 @@ pub struct Paths {
     pub deno_exe: PathBuf,
     pub settings_file: PathBuf,
 
+    pub video_dir: PathBuf,
+
     // temp paths for update and install
     pub tmp_dir: PathBuf,
     pub tmp_ffmpeg_dir: PathBuf,

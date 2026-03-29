@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::{Color, Element, Length, Task};
@@ -92,6 +93,7 @@ pub enum Message {
     ShowSideBar(bool),
     DownloadMessage(download::Message),
     
+    CleanupDone(()),
     Debug,
 }
 
@@ -128,18 +130,37 @@ impl Screen {
     }
 
     pub fn start(&mut self, client: &Client) -> Task<Message> {
+        let download_path = self.paths.video_dir.clone();
+
+        let task = Task::perform(
+            async move {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                let _ = tokio::fs::remove_dir_all(&download_path).await
+                    .map_err(|e| error!("failed to clean up {download_path:?} -> {e}"));
+            },
+
+            Message::CleanupDone,
+        );
+        
         if self.settings.auto_updates {
-            Task::perform(
-                check_for_updates(Arc::clone(&self.paths), client.clone()),
-                Message::CheckForUpdateFinished,
+            task.chain(
+                Task::perform(
+                    check_for_updates(Arc::clone(&self.paths), client.clone()),
+                    Message::CheckForUpdateFinished,
+                ),
             )
         } else {
-            Task::none()
+            task
         }
     }
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::CleanupDone(_) => {
+                info!("Finished cleanup");
+                Action::None
+            },
+            
             Message::DownloadMessage(message) => {
                 if let Some(download) = self.downloads.get_mut(&message.id) {
                     let action = download.update(message.kind);
@@ -149,6 +170,14 @@ impl Screen {
                             self.downloads.remove_entry(&message.id);
                             self.ids.free(message.id);
                             Action::None
+                        },
+
+                        download::ActionKind::RunClose(task) => {
+                            self.downloads.remove_entry(&message.id);
+                            self.ids.free(message.id);
+                            Action::Run(
+                                task.map(Message::DownloadMessage),
+                            )
                         },
 
                         download::ActionKind::Run(task) => {

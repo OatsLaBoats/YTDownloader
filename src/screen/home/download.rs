@@ -1,4 +1,7 @@
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 use std::sync::Arc;
+use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::{Element, Task, color, never};
@@ -8,6 +11,7 @@ use tracing::{info, error};
 
 use crate::command::yt_dlp::{AudioDownloadParams, AudioFileType, AudioInfo, DownloadParams, DownloadProgress, VideoDownloadParams, VideoFileType, VideoInfo, VideoQuality, download_media};
 use crate::lang::Translation;
+use crate::platform::windows::kill_process;
 use crate::screen::TOOLTIP_DELAY;
 use crate::{AudioConversionQuality, Images, Paths, SponsorBlockOption};
 use crate::widget::linear::Linear;
@@ -98,6 +102,7 @@ pub enum ActionKind {
     None,
     Close,
     Run(Task<Message>),
+    RunClose(Task<Message>),
 }
 
 pub struct Action {
@@ -125,6 +130,10 @@ impl Action {
     pub fn run(id: usize, task: Task<Message>) -> Self {
         Self::new(id, ActionKind::Run(task))
     }
+
+    pub fn run_close(id: usize, task: Task<Message>) -> Self {
+        Self::new(id, ActionKind::RunClose(task))
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Clone)]
@@ -135,14 +144,30 @@ enum ProgressState {
     Finished(bool),
 }
 
+#[derive(Hash)]
+struct VideoId<'a> {
+    url: &'a str,
+    id: usize,
+}
+
+impl<'a> VideoId<'a> {
+    fn gen_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
 pub struct State {
     id: usize,
     paths: Arc<Paths>,
     info: DownloadInfo,
+    hash: u64,
 
     paused: bool,
     progress_state: ProgressState,
     task: Option<iced::task::Handle>,
+    process: Option<u32>,
 
     tmp_file_name: Option<String>,
     total_bytes: usize,
@@ -159,10 +184,12 @@ impl State {
             id,
             paths,
             info,
+            hash: id as u64,
 
             paused: false,
             progress_state: ProgressState::Starting,
             task: None,
+            process: None,
 
             tmp_file_name: None,
             total_bytes: 0,
@@ -206,8 +233,17 @@ impl State {
                 });
             },
         }
+
+        let vi = VideoId {
+            url: &link_,
+            id: self.id,
+        };
+
+        self.hash = vi.gen_hash();
         
         let sip = download_media(
+            self.hash,
+            self.paths.video_dir.clone(),
             self.paths.yt_dlp_exe.clone(),
             self.paths.ffmpeg_bin_dir.clone(),
             self.paths.deno_exe.clone(),
@@ -260,69 +296,29 @@ impl State {
                     return Action::close(self.id);
                 }
 
-                // TODO: This doesn't seem to always cancel it
                 if let Some(h) = &self.task && !h.is_aborted() {
                     h.abort();
                 }
-                
-                let (title, dir) = match &self.info {
-                    DownloadInfo::Video(v) => {
-                        if let Some(i) = &v.info.title {
-                            (i.clone(), v.download_location.clone())
-                        } else {
-                            return Action::close(self.id);
-                        }
-                    },
 
-                    DownloadInfo::Audio(v) => {
-                        if let Some(i) = &v.info.title {
-                            (i.clone(), v.download_location.clone())
-                        } else {
-                            return Action::close(self.id);
-                        }
-                    },
-                };
+                // Ensure it is killed even if tokio doesn't
+                if let Some(id) = self.process {
+                    let _ = kill_process(id);
+                }
 
-                // Doens't really work there is some weird naming convention
+                let mut download_path = self.paths.video_dir.clone();
+                download_path.push(format!("dl{}", self.hash));
+
                 let task = Task::perform(
                     async move {
-                        let _ = tokio::task::block_in_place(move || {
-                            let d = std::fs::read_dir(dir);
-                            if d.is_err() { return () };
-
-                            let paths = d.unwrap()
-                                .filter_map(|r| r.ok())
-                                .map(|de| de.path())
-                                .filter_map(|p| {
-                                    let Some(n) = p.file_name() else {
-                                        return None;
-                                    };
-
-                                    let Some(n) = n.to_str() else {
-                                        return None;
-                                    };
-
-                                    if n.starts_with(&title) {
-                                        Some(p)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect::<Vec<_>>();
-
-                            info!("{paths:?}");
-                            for p in paths {
-                                let _ = std::fs::remove_file(p);
-                            }
-
-                            ()
-                        });
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        let _ = tokio::fs::remove_dir_all(&download_path).await
+                            .map_err(|e| error!("failed to clean up {download_path:?} -> {e}"));
                     },
 
                     Message::cleanup(self.id),
                 );
-                
-                Action::run(self.id, task)
+               
+                Action::run_close(self.id, task)
             },
 
             MessageKind::Pause => {
@@ -344,7 +340,8 @@ impl State {
 
             MessageKind::Working(progress) => {
                 match progress {
-                    DownloadProgress::Starting => {
+                    DownloadProgress::Starting(pid) => {
+                        self.process = pid;
                         self.progress_state = ProgressState::Starting;
                     },
         
@@ -447,25 +444,24 @@ impl State {
             },
         };
 
-        let close_button: Element<'_, Message> =
-            if self.progress_state == ProgressState::PostProcessing {
-                space().into()
-            } else {
-                tooltip(
-                    button(
-                        center(image(images.close.clone()))
-                            .width(20)
-                            .height(20),
-                    )
-                    .on_press(Message::close(self.id)),
-                    container(translation.tooltip_download_close_desc)
-                        .padding(10)
-                        .style(container::rounded_box),
-                    tooltip::Position::Bottom,
+        let close_button: Element<'_, Message> = if self.progress_state == ProgressState::PostProcessing {
+            space().into()
+        } else {
+            tooltip(
+                button(
+                    center(image(images.close.clone()))
+                        .width(20)
+                        .height(20),
                 )
-                .delay(TOOLTIP_DELAY)
-                .into()
-            };
+                .on_press(Message::close(self.id)),
+                container(translation.tooltip_download_close_desc)
+                    .padding(10)
+                    .style(container::rounded_box),
+                tooltip::Position::Bottom,
+            )
+            .delay(TOOLTIP_DELAY)
+            .into()
+        };
 
         let action_button: Element<'_, Message> =
             if self.progress_state == ProgressState::PostProcessing {

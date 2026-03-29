@@ -33,7 +33,7 @@ pub fn new() -> Translation {
         general_format: "Format",
         general_by: "by",
         general_download: "Download",
-        info_panel_link_error: "Error: Invalid URL make\nMake sure the link is correct",
+        info_panel_link_error: "Error: Invalid URL\nMake sure the link is correct",
         info_panel_media_error: "Error: Failed to retrieve link information\nMake sure that the link refers to valid media",
         info_panel_loading_message_attemp1_label: "Loading link...",
         info_panel_loading_message_attemp2_label: "Retrying...",

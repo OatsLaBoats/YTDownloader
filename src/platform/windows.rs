@@ -5,10 +5,12 @@ use std::os::windows::ffi::OsStringExt;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Globalization::*;
 use windows::core::{PCSTR, PWSTR, s};
 use windows::Win32::UI::Shell::*;
+use windows::Win32::System::Threading::*;
 use thiserror::Error;
 
 use crate::lang::Language;
@@ -37,6 +39,26 @@ pub enum Error {
 
     #[error("failed to convert rust string to c string")]
     ConvertRustStringToCStringFailed,
+
+    #[error("failed to open process")]
+    OpenProcessFailed(Arc<windows::core::Error>),
+
+    #[error("failed to terminate process")]
+    TermianteProcessFailed(Arc<windows::core::Error>),
+}
+
+pub fn kill_process(id: u32) -> Result<()> {
+    unsafe {
+        let handle = OpenProcess(PROCESS_TERMINATE, false, id)
+            .map_err(|e| Error::OpenProcessFailed(Arc::new(e)))?;
+
+        TerminateProcess(handle, 1)
+            .map_err(|e| Error::TermianteProcessFailed(Arc::new(e)))?;
+
+        let _ = CloseHandle(handle);
+    }
+
+    Ok(())
 }
 
 pub fn open_file_explorer(dir: &str) -> Result<()> {
@@ -138,6 +160,7 @@ pub async fn finish_install_process(
     )?;
 
     tokio::process::Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW.0)
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-Command")
@@ -193,6 +216,7 @@ pub async fn finish_update_process(
     };
     
     tokio::process::Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW.0)
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-Command")
@@ -219,6 +243,7 @@ pub async fn finish_update_process(
 
 pub async fn uninstall() -> Result<()> {
     tokio::process::Command::new("powershell")
+        .creation_flags(CREATE_NO_WINDOW.0)
         .arg("-ExecutionPolicy")
         .arg("Bypass")
         .arg("-Command")
@@ -227,6 +252,7 @@ pub async fn uninstall() -> Result<()> {
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\deno.exe\"; \
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\yt-dlp.exe\"; \
                 Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\bin\\ffmpeg\"; \
+                Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\videos\"; \
                 Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
                 Remove-Item -Path \"$HOME:Desktop\\YT Downloader.lnk\"; \
         ")

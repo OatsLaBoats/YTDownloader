@@ -7,6 +7,7 @@ use thiserror::Error;
 use serde::{Serialize, Deserialize};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::{info, error};
+use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
 use crate::{AudioConversionQuality, SponsorBlockOption};
 
@@ -29,6 +30,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub async fn query_version(yt_dlp_path: impl AsRef<OsStr>) -> Result<String> {
     let result = tokio::process::Command::new(yt_dlp_path)
+        .creation_flags(CREATE_NO_WINDOW.0)
         .arg("--version")
         .kill_on_drop(true)
         .output().await.map_err(|e|
@@ -51,7 +53,7 @@ pub async fn query_version(yt_dlp_path: impl AsRef<OsStr>) -> Result<String> {
 
 #[derive(Debug, Clone)]
 pub enum DownloadProgress {
-    Starting,
+    Starting(Option<u32>),
     Downloading(ProgressDownloading),
 }
 
@@ -87,6 +89,9 @@ pub struct AudioDownloadParams {
 }
 
 pub fn download_media(
+    id: u64,
+    video_dir: PathBuf,
+
     yt_dlp_path: PathBuf,
     ffmpeg_path: PathBuf,
     deno_path: PathBuf,
@@ -97,10 +102,26 @@ pub fn download_media(
     params: DownloadParams,
 ) -> impl Straw<(), DownloadProgress, ()> {
     sipper(async move |mut progress| {
-        progress.send(DownloadProgress::Starting).await;
-        
+        progress.send(DownloadProgress::Starting(None)).await;
+
+        if !video_dir.exists() {
+            tokio::fs::create_dir(&video_dir).await
+                .map_err(|e| error!("DOWNLOAD_MEDIA: failed to create video directory -> {e}"))?;
+        }
+
+        let mut download_path = video_dir.clone();
+        download_path.push(format!("dl{id}"));
+
+        if !download_path.exists() {
+            tokio::fs::create_dir(&download_path).await
+                .map_err(|e| error!("DOWNLOAD_MEDIA: failed to create video download directory -> {e}"))?;
+        }
+
+        let path_str = download_path.to_string_lossy();
+       
         let mut command = tokio::process::Command::new(&yt_dlp_path);
         command
+            .creation_flags(CREATE_NO_WINDOW.0)
             .arg(&link)
             .arg("--no-playlist")
             .arg("--no-mtime")
@@ -127,7 +148,7 @@ pub fn download_media(
                 |_|\
             ")
             .arg("-o")
-            .arg(format!("{output_path}\\%(title)s.%(ext)s"))
+            .arg(format!("{path_str}\\%(title)s.%(ext)s"))
             .kill_on_drop(true)
             .stdout(std::process::Stdio::piped());
 
@@ -138,6 +159,85 @@ pub fn download_media(
 
         match params {
             DownloadParams::Video(v) => {
+                if let Some(s) = v.sb_options {
+                    let mut opts = String::new();
+                    if s.sb_sponsor {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("sponsor");
+                    }
+                    if s.sb_intro {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("intro");
+                    }
+                    if s.sb_outro {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("outro");
+                    }
+                    if s.sb_selfpromo {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("selfpromo");
+                    }
+                    if s.sb_preview {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("preview");
+                    }
+                    if s.sb_filler {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("filler");
+                    }
+                    if s.sb_interaction {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("interaction");
+                    }
+                    if s.sb_music_offtopic {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("music_offtopic");
+                    }
+
+                    if s.sb_hook {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("hook");
+                    }
+
+                    if s.sb_chapter {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("chapter");
+                    }
+
+                    if s.sb_all {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("all");
+                    }
+
+                    if !opts.is_empty() {
+                        command
+                            .arg("--sponsorblock-remove")
+                            .arg(&opts);
+                    }
+                }
+
                 let mut quality = v.quality.to_string();
                 quality.pop(); // Remove the 'p'
 
@@ -157,6 +257,85 @@ pub fn download_media(
             },
 
             DownloadParams::Audio(v) => {
+                if let Some(s) = v.sb_options {
+                    let mut opts = String::new();
+                    if s.sb_sponsor {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("sponsor");
+                    }
+                    if s.sb_intro {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("intro");
+                    }
+                    if s.sb_outro {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("outro");
+                    }
+                    if s.sb_selfpromo {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("selfpromo");
+                    }
+                    if s.sb_preview {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("preview");
+                    }
+                    if s.sb_filler {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("filler");
+                    }
+                    if s.sb_interaction {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("interaction");
+                    }
+                    if s.sb_music_offtopic {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("music_offtopic");
+                    }
+
+                    if s.sb_hook {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("hook");
+                    }
+
+                    if s.sb_chapter {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("chapter");
+                    }
+
+                    if s.sb_all {
+                        if !opts.is_empty() {
+                            opts.push(',');
+                        }
+                        opts.push_str("all");
+                    }
+
+                    if !opts.is_empty() {
+                        command
+                            .arg("--sponsorblock-remove")
+                            .arg(&opts);
+                    }
+                }
+
                 command
                     .arg("-f")
                     .arg("ba/ba*/b");
@@ -178,6 +357,8 @@ pub fn download_media(
                 error!("DOWNLOAD_MEDIA: failed to spawn yt-dlp process -> {e}");
                 ()
             })?;
+
+        progress.send(DownloadProgress::Starting(child.id())).await;
 
         let Some(stdout) = child.stdout.take() else {
             error!("DOWNLOAD_MEDIA: failed to take ownership of yt-dlp stdout");
@@ -218,6 +399,31 @@ pub fn download_media(
             })).await;
         }
 
+        // Move downloaded files
+        let dl_path = download_path.clone();
+        tokio::task::block_in_place(move || -> std::result::Result<(), ()> {
+            let paths = std::fs::read_dir(&dl_path)
+                .map_err(|e| error!("DOWNLOAD_MEDIA: failed to read video download directory -> {e}"))?
+                .filter_map(|r| r.ok())
+                .map(|de| de.path())
+                .collect::<Vec<_>>();
+
+            for p in paths {
+                let filename = p.file_name()
+                    .ok_or(())
+                    .map_err(|_| error!("DOWNLOAD_MEDIA: failed to get result filename"))?
+                    .to_string_lossy();
+
+                std::fs::copy(&p, format!("{output_path}\\{filename}"))
+                    .map_err(|e| error!("DOWNLOAD_MEDIA: failed to copy result video file -> {e}"))?;
+            }
+
+            Ok(())
+        })?;
+
+        tokio::fs::remove_dir_all(&download_path).await
+            .map_err(|e| error!("DOWNLOAD_MEDIA: failed to remove video download directory -> {e}"))?;
+
         match child.wait().await {
             Ok(s) => {
                 info!("DOWNLOAD_MEDIA: yt-dlp child process exited with status: {s}");
@@ -248,6 +454,7 @@ pub async fn query_link_info(
     
     // |_| is the separator to make parsing easier. It shoudln't conflict with the content of the query.
     let link_query_result = tokio::process::Command::new(&yt_dlp_path)
+        .creation_flags(CREATE_NO_WINDOW.0)
         .arg(ipv4)
         .arg("--ffmpeg-location")
         .arg(&ffmpeg_path)
@@ -305,6 +512,7 @@ pub async fn query_link_info(
     // If it succeeds we know it's a playlist
     if playlist_id != "NA" && playlist_name != "NA" {
         let playlist_query_result = tokio::process::Command::new(&yt_dlp_path)
+            .creation_flags(CREATE_NO_WINDOW.0)
             .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
@@ -363,6 +571,7 @@ pub async fn query_link_info(
         );
     } else if vcodec != "none" {
         let video_query_result = tokio::process::Command::new(&yt_dlp_path)
+            .creation_flags(CREATE_NO_WINDOW.0)
             .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)
@@ -578,6 +787,7 @@ pub async fn query_link_info(
         );
     } else if acodec != "none" {
         let audio_query_result = tokio::process::Command::new(&yt_dlp_path)
+            .creation_flags(CREATE_NO_WINDOW.0)
             .arg(ipv4)
             .arg("--ffmpeg-location")
             .arg(&ffmpeg_path)

@@ -12,6 +12,9 @@ windows = { version = "0.62.2", features = [
   "Win32_UI_WindowsAndMessaging",
   "Win32_Globalization",
   "Win32_UI_Shell",
+  "Win32_System_Threading",
+  "Win32_System_Console",
+  "Win32_System_StationsAndDesktops",
 ]}
 
 serde = { version = "1.0.228", features = ["derive"] }
@@ -31,6 +34,7 @@ windows-result = "0.4.1"
 url = { version = "2.5.8", features = ["serde"] }
 lyon_algorithms = "1.0.19"
 ordermap = "1.1.0"
+tracing-appender = "0.2.4"
 
 [build-dependencies]
 winresource = "0.1.30"
