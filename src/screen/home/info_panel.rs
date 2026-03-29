@@ -517,9 +517,15 @@ impl State {
             self.loading_playlist_link_info,
         );
 
+        let name = if let Some(v) = &info.name {
+            v
+        } else {
+            translation.general_unknown
+        };
+
         row![
             column![
-                text(&info.name),
+                text(name),
                 row![
                     space().width(50),
                     selection,

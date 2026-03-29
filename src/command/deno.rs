@@ -4,6 +4,8 @@ use std::sync::Arc;
 use thiserror::Error;
 use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
+use crate::platform::windows::convert_ascii_to_utf8;
+
 #[derive(Error, Debug, Clone)]
 pub enum Error {
     #[error("failed to spawn deno process")]
@@ -46,11 +48,14 @@ pub async fn query_version(deno_path: impl AsRef<OsStr>) -> Result<String> {
         end_index += 1;
     }
 
-    let version_slice = str::from_utf8(&output[5..end_index]).map_err(|_|
+    // Cut the /r/n at the end
+    let version_slice = convert_ascii_to_utf8(&output[5..end_index]).ok_or(()).map_err(|_|
         Error::ConvertBytesToUTF8Failed
     )?;
 
-    let mut version_string = version_slice.to_string();
+    let version = version_slice.trim_end_matches(&['\r', '\n']);
+
+    let mut version_string = version.to_string();
     version_string.insert(0, 'v');
 
     Ok(version_string)

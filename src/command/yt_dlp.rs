@@ -10,6 +10,7 @@ use tracing::{info, error};
 use windows::Win32::System::Threading::CREATE_NO_WINDOW;
 
 use crate::{AudioConversionQuality, SponsorBlockOption};
+use crate::platform::windows::convert_ascii_to_utf8;
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {
@@ -44,11 +45,13 @@ pub async fn query_version(yt_dlp_path: impl AsRef<OsStr>) -> Result<String> {
     }
     
     // Cut the /r/n at the end
-    let version_slice = str::from_utf8(&output).map_err(|_|
+    let version_slice = convert_ascii_to_utf8(&output).ok_or(()).map_err(|_|
         Error::ConvertBytesToUTF8Failed
-    )?.trim_end_matches(&['\r', '\n']);
+    )?;
 
-    Ok(version_slice.to_string())
+    let version = version_slice.trim_end_matches(&['\r', '\n']);
+
+    Ok(version.to_string())
 }
 
 #[derive(Debug, Clone)]
@@ -374,13 +377,13 @@ pub fn download_media(
             if !line.starts_with("OK|_|") { continue }
             let mut it = line.split("|_|");
             it.next();
-            let temp_file_name = it.next().unwrap();
-            let eta = it.next().unwrap();
-            let speed = it.next().unwrap();
-            let total_bytes_estimate = it.next().unwrap();
-            let total_bytes = it.next().unwrap();
-            let downloaded_bytes = it.next().unwrap();
-            let percent = it.next().unwrap();
+            let temp_file_name = it.next().unwrap_or("NA");
+            let eta = it.next().unwrap_or("NA");
+            let speed = it.next().unwrap_or("NA");
+            let total_bytes_estimate = it.next().unwrap_or("NA");
+            let total_bytes = it.next().unwrap_or("NA");
+            let downloaded_bytes = it.next().unwrap_or("NA");
+            let percent = it.next().unwrap_or("NA");
 
             let tmp_file_name = if temp_file_name != "NA" {
                 Some(temp_file_name.to_string())
@@ -446,7 +449,7 @@ pub async fn query_link_info(
     link: String,
 ) -> Result<LinkInfo> {
     let ipv4 = if force_ipv4 {
-        tracing::info!("forcing ipv4");
+        info!("forcing ipv4");
         "--force-ipv4" // Useful for when being rate limited
     } else {
         "--skip-unavailable-fragments" // On by default so we use it as a place holder
@@ -488,9 +491,14 @@ pub async fn query_link_info(
         return Err(Error::YtDlpCommandFailed);
     }
 
-    let link_basic_info = str::from_utf8(&link_query).map_err(|_|
+    info!("QUERY_LINK_INFO: query done {}", link_query.len());
+
+    let link_basic_info = convert_ascii_to_utf8(&link_query).ok_or(()).map_err(|_| {
+        error!("failed to convert bytes to utf8");
         Error::ConvertBytesToUTF8Failed
-    )?;
+    })?;
+
+    info!("QUERY_LINK_INFO: bytes are valid");
 
     if !link_basic_info.starts_with("OK|_|") {
         return Err(Error::InvalidLink);
@@ -499,18 +507,21 @@ pub async fn query_link_info(
     // parse basic info
     let mut it = link_basic_info.split("|_|");
     it.next();
-    let playlist_id = it.next().unwrap();
-    let playlist_name = it.next().unwrap();
-    let playlist_count = it.next().unwrap();
-    let vcodec = it.next().unwrap();
-    let acodec = it.next().unwrap();
-    let title = it.next().unwrap();
-    let channel = it.next().unwrap();
-    let uploader = it.next().unwrap();
-    let creator = it.next().unwrap();
+    let playlist_id = it.next().unwrap_or("NA");
+    let playlist_name = it.next().unwrap_or("NA");
+    let playlist_count = it.next().unwrap_or("NA");
+    let vcodec = it.next().unwrap_or("NA");
+    let acodec = it.next().unwrap_or("NA");
+    let title = it.next().unwrap_or("NA");
+    let channel = it.next().unwrap_or("NA");
+    let uploader = it.next().unwrap_or("NA");
+    let creator = it.next().unwrap_or("NA");
+
+    info!("QUERY_LINK_INFO: parsed basic info");
 
     // If it succeeds we know it's a playlist
-    if playlist_id != "NA" && playlist_name != "NA" {
+    if playlist_id != "NA" || playlist_name != "NA" {
+        info!("QUERY_LINK_INFO: getting playlist info");
         let playlist_query_result = tokio::process::Command::new(&yt_dlp_path)
             .creation_flags(CREATE_NO_WINDOW.0)
             .arg(ipv4)
@@ -537,27 +548,42 @@ pub async fn query_link_info(
             return Err(Error::YtDlpCommandFailed);
         }
 
-        let playlist_info = str::from_utf8(&playlist_query).map_err(|_|
+        info!("QUERY_LINK_INFO: query done {}", playlist_query.len());
+
+        let playlist_info = convert_ascii_to_utf8(&playlist_query).ok_or(()).map_err(|_| {
+            error!("QUERY_LINK_INFO: failed to convert bytes");
             Error::ConvertBytesToUTF8Failed
-        )?;
+        })?;
 
         if !playlist_info.starts_with("OK|_|") {
             return Err(Error::InvalidLink);
         }
 
-        let name = playlist_name.to_string();
-        let count = playlist_count.parse::<usize>().unwrap();
+        let count = playlist_count.parse::<usize>().unwrap_or(0);
+
+        let name = if playlist_name != "NA" {
+            Some(playlist_name.to_string())
+        } else {
+            None
+        };
 
         let mut items = Vec::with_capacity(count);
-        for line in playlist_info.lines() {
+        for (i, line) in playlist_info.lines().enumerate() {
             let mut it = line.split("|_|");
             it.next(); // OK
-            let title = it.next().unwrap();
-            let url = it.next().unwrap();
+            let title = it.next().unwrap_or("NA");
+            let url = it.next().unwrap_or("NA");
+
+            let title = if title != "NA" {
+                Some(title.to_string())
+            } else {
+                None
+            };
 
             items.push(Arc::new(PlaylistItem {
-                title: title.to_string(),
+                title: title,
                 url: url.to_string(),
+                index: i + 1,
             }));
         }
 
@@ -569,7 +595,7 @@ pub async fn query_link_info(
                 },
             ),
         );
-    } else if vcodec != "none" {
+    } else if vcodec != "none" && vcodec != "NA" {
         let video_query_result = tokio::process::Command::new(&yt_dlp_path)
             .creation_flags(CREATE_NO_WINDOW.0)
             .arg(ipv4)
@@ -612,7 +638,7 @@ pub async fn query_link_info(
             return Err(Error::YtDlpCommandFailed);
         }
 
-        let video_info = str::from_utf8(&video_query).map_err(|_|
+        let video_info = convert_ascii_to_utf8(&video_query).ok_or(()).map_err(|_|
             Error::ConvertBytesToUTF8Failed
         )?;
 
@@ -635,11 +661,11 @@ pub async fn query_link_info(
         for line in video_info.lines() {
             let mut it = line.split("|_|");
             it.next(); // OK
-            let id = it.next().unwrap();
-            let height = it.next().unwrap();
-            let fps = it.next().unwrap();
-            let ext = it.next().unwrap();
-            let resolution = it.next().unwrap();
+            let id = it.next().unwrap_or("NA");
+            let height = it.next().unwrap_or("NA");
+            let fps = it.next().unwrap_or("NA");
+            let ext = it.next().unwrap_or("NA");
+            let resolution = it.next().unwrap_or("NA");
 
             // There order here is very intentional and important
             // any other order it will be parsed wrong
@@ -785,7 +811,7 @@ pub async fn query_link_info(
                 },
             ),
         );
-    } else if acodec != "none" {
+    } else if acodec != "none" && acodec != "NA" {
         let audio_query_result = tokio::process::Command::new(&yt_dlp_path)
             .creation_flags(CREATE_NO_WINDOW.0)
             .arg(ipv4)
@@ -816,7 +842,7 @@ pub async fn query_link_info(
             return Err(Error::YtDlpCommandFailed);
         }
 
-        let audio_info = str::from_utf8(&audio_query).map_err(|_|
+        let audio_info = convert_ascii_to_utf8(&audio_query).ok_or(()).map_err(|_|
             Error::ConvertBytesToUTF8Failed
         )?;
 
@@ -830,8 +856,8 @@ pub async fn query_link_info(
         for line in audio_info.lines() {
             let mut it = line.split("|_|");
             it.next(); // OK
-            let id = it.next().unwrap();
-            let ext = it.next().unwrap();
+            let id = it.next().unwrap_or("NA");
+            let ext = it.next().unwrap_or("NA");
 
             if best.is_none() {
                 best = Some(
@@ -888,19 +914,24 @@ pub enum LinkInfo {
 
 #[derive(Debug, Clone)]
 pub struct PlaylistInfo {
-    pub name: String,
+    pub name: Option<String>,
     pub items: Vec<Arc<PlaylistItem>>, // Can not contain other playlists
 }
 
 #[derive(Debug, Clone)]
 pub struct PlaylistItem {
-    pub title: String,
+    pub title: Option<String>,
     pub url: String,
+    pub index: usize,
 }
 
 impl std::fmt::Display for PlaylistItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.title)
+        if let Some(v) = &self.title {
+            return f.write_str(&v);
+        }
+
+        f.write_str(&format!("{}", self.index))
     }
 }
 

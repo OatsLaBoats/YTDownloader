@@ -22,6 +22,7 @@ pub async fn open_file_picker(cwd: String) -> Option<String> {
 
 pub async fn check_for_updates(paths: Arc<Paths>, client: Client) -> bool {
     info!("CHECK_FOR_UPDATE: start");
+    info!("CHECK_FOR_UPDATE: app version: {VERSION}");
 
     if !paths.bin_dir.exists() {
         info!("CHECK_FOR_UPDATE: bin directory missing");
@@ -80,6 +81,7 @@ pub async fn check_for_updates(paths: Arc<Paths>, client: Client) -> bool {
             return false;
         },
     };
+
 
     if current_yt_dlp_version != latest_yt_dlp_release.tag_name {
         info!("CHECK_FOR_UPDATE: yt-dlp is outdated");

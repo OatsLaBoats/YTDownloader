@@ -5,6 +5,7 @@ use std::os::windows::ffi::OsStringExt;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use tracing::info;
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::Win32::Globalization::*;
@@ -16,6 +17,52 @@ use thiserror::Error;
 use crate::lang::Language;
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub fn convert_ascii_to_utf8(ascii: &[u8]) -> Option<String> {
+    unsafe {
+        match str::from_utf8(ascii) {
+            Ok(v) => Some(v.to_string()),
+            Err(_) => {
+                let len = MultiByteToWideChar(CP_ACP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), ascii, None);
+                if len == 0 {
+                    return None;
+                }
+
+                let mut buf = Vec::with_capacity(len as usize);
+                buf.set_len(len as usize);
+                let written = MultiByteToWideChar(CP_ACP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), ascii, Some(&mut buf));
+                if written == 0 {
+                    return None;
+                }
+
+                buf.set_len(written as usize);
+
+
+                let len = WideCharToMultiByte(CP_UTF8, 0, &buf, None, PCSTR::null(), None);
+                if len == 0 {
+                    return None;
+                }
+
+                let mut utfbuf = Vec::with_capacity(len as usize);
+                utfbuf.set_len(len as usize);
+                let written = WideCharToMultiByte(CP_UTF8, 0, &buf, Some(&mut utfbuf), PCSTR::null(), None);
+                if written == 0 {
+                    return None;
+                }
+
+                utfbuf.set_len(written as usize);
+
+                match String::from_utf8(utfbuf) {
+                    Ok(s) => Some(s),
+                    Err(e) => {
+                        info!("CONVER_ASCII_TO_UTF8: failed to convert ut8 from win32 to rust -> {e}");
+                        None
+                    },
+                }
+            },
+        }
+    }
+}
 
 #[derive(Error, Debug, Clone)]
 pub enum Error {

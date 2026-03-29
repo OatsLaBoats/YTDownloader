@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use iced::alignment::{Horizontal, Vertical};
 use iced::{Color, Element, Length, Task};
@@ -134,7 +133,11 @@ impl Screen {
 
         let task = Task::perform(
             async move {
-                tokio::time::sleep(Duration::from_secs(5)).await;
+                if !download_path.exists() {
+                    info!("video download path doesn't exist");
+                    return;
+                }
+
                 let _ = tokio::fs::remove_dir_all(&download_path).await
                     .map_err(|e| error!("failed to clean up {download_path:?} -> {e}"));
             },
