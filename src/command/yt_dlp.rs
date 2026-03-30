@@ -244,19 +244,33 @@ pub fn download_media(
                 let mut quality = v.quality.to_string();
                 quality.pop(); // Remove the 'p'
 
-                if v.quality == VideoQuality::Best {
-                    command
-                        .arg("-f")
-                        .arg(format!("bv*[ext={}]+ba/b", v.format));
+                if v.format == VideoFileType::Best {
+                    if v.quality == VideoQuality::Best {
+                        command
+                            .arg("-f")
+                            .arg(format!("bv*+ba/b"));
+                    } else {
+                        command
+                            .arg("-f")
+                            .arg(format!("bv*[height={}]+ba/b[height={}]", quality, quality));
+                    }
                 } else {
-                    command
-                        .arg("-f")
-                        .arg(format!("bv*[height={}][ext={}]+ba/b[height={}]", quality, v.format, quality));
+                    if v.quality == VideoQuality::Best {
+                        command
+                            .arg("-f")
+                            .arg(format!("bv*[ext={}]+ba/b", v.format));
+                    } else {
+                        command
+                            .arg("-f")
+                            .arg(format!("bv*[height={}][ext={}]+ba/b[height={}]", quality, v.format, quality));
+                    }
                 }
 
-                command
-                    .arg("--recode-video")
-                    .arg(format!("{}", v.format));
+                if v.format != VideoFileType::Best {
+                    command
+                        .arg("--recode-video")
+                        .arg(format!("{}", v.format));
+                }
             },
 
             DownloadParams::Audio(v) => {
@@ -348,8 +362,16 @@ pub fn download_media(
                         .arg("--recode-video")
                         .arg(format!("{}", v.format));
                 } else {
+                    let quality = match v.quality {
+                        AudioConversionQuality::High => "0",
+                        AudioConversionQuality::Medium => "5",
+                        AudioConversionQuality::Low => "10",
+                    };
+
                     command
                         .arg("--extract-audio")
+                        .arg("--audio-quality")
+                        .arg(quality)
                         .arg("--audio-format")
                         .arg(format!("{}", v.format));
                 }
@@ -1022,6 +1044,7 @@ pub enum VideoFileType {
     GIF,
     MKV,
     MOV,
+    Best,
 }
 
 impl std::fmt::Display for VideoFileType {
@@ -1034,6 +1057,7 @@ impl std::fmt::Display for VideoFileType {
             Self::GIF => "gif",
             Self::MKV => "mkv",
             Self::MOV => "mov",
+            Self::Best => "best",
         };
 
         write!(f, "{s}")
@@ -1041,7 +1065,7 @@ impl std::fmt::Display for VideoFileType {
 }
 
 impl VideoFileType {
-    pub fn file_types() -> [VideoFileType; 7] {
+    pub fn file_types() -> [VideoFileType; 8] {
         [
             VideoFileType::MP4,
             VideoFileType::WEBM,
@@ -1050,6 +1074,7 @@ impl VideoFileType {
             VideoFileType::GIF,
             VideoFileType::MKV,
             VideoFileType::MOV,
+            VideoFileType::Best,
         ]
     }
 }

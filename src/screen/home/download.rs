@@ -499,10 +499,10 @@ impl State {
                 .into()
             };
 
-        let eta: Element<'_, Message> = if eta_seconds == 0 && eta_minutes == 0 {
-            space().into()
-        } else {
+        let eta: Element<'_, Message> = if let ProgressState::Downloading = self.progress_state {
             text(format!("{:02}:{:02}", eta_minutes, eta_seconds)).into()
+        } else {
+            space().into()
         };
 
         let eta_space = if eta_seconds == 0 && eta_minutes == 0 {
