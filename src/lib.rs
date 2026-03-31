@@ -11,7 +11,7 @@ pub mod widget;
 
 use lang::Language;
 
-pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &'static str = "1.0.3";
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum Theme {

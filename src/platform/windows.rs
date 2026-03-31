@@ -257,7 +257,9 @@ pub async fn finish_update_process(
     };
 
     let update_app = if app_updated {
-        "Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\yt_downloader.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\";"
+        "\
+        Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
+        Move-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\\yt_downloader.exe\" -Destination \"$env:LOCALAPPDATA\\YT Downloader\";"
     } else {
         ""
     };
@@ -272,7 +274,6 @@ pub async fn finish_update_process(
                 {update_yt_dlp}\
                 {update_ffmpeg}\
                 {update_deno}\
-                Remove-Item -Path \"$env:LOCALAPPDATA\\YT Downloader\\yt_downloader.exe\"; \
                 {update_app}\
                 Remove-Item -Recurse -Path \"$env:LOCALAPPDATA\\YT Downloader\\downloads\"; \
                 $WshShell = New-Object -ComObject WScript.Shell; \
