@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use tokio::io::AsyncWriteExt;
 use tracing::{error, info};
-use iced::{Element, Task};
+use iced::{Element, Size, Task};
 use iced::widget::image::Handle;
 
 use yt_downloader::*;
@@ -46,6 +46,8 @@ fn main() -> iced::Result {
             icon: icon,
             ..Default::default()
         })
+        .centered()
+        .window_size(Size::new(900.0, 600.0))
         .title("YT Downloader")
         .theme(App::theme)
         .run()
