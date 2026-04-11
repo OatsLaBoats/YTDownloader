@@ -43,6 +43,8 @@ pub struct State {
 
 #[derive(Clone, Debug)]
 pub enum Message {
+    CancelLoading,
+    
     UpdateSettings(Settings),
     
     LinkInfoQueryFinished(yt_dlp::Result<LinkInfo>),
@@ -154,6 +156,18 @@ impl State {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::CancelLoading => {
+                if let Some(th) = &mut self.task_handle && !th.is_aborted() {
+                    th.abort();
+                }
+
+                self.loading_link_info = false;
+                self.loading_playlist_link_info = false;
+                self.task_handle = None;
+
+                Action::None
+            },
+            
             Message::UpdateSettings(settings) => {
                 self.settings = settings;
                 Action::None
@@ -475,6 +489,13 @@ impl State {
                 Circular::new(),
                 space().height(30),
                 text(s),
+                space().height(10),
+                button(
+                    center(image(images.close.clone()))
+                        .width(20)
+                        .height(20),
+                )
+                .on_press(Message::CancelLoading),
             ]
             .align_x(Horizontal::Center)
             .into()

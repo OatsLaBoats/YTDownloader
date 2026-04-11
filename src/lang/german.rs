@@ -48,7 +48,7 @@ pub fn new() -> Translation {
 
         download_status_downloading: "wird geladen",
         download_status_starting: "wird gestarted",
-        download_status_re_encoding: "Re-encoding",
+        download_status_postprocessing: "Postprocessing",
         download_status_failed: "Download fehlgeschlagen",
         download_status_finished: "fertig",
     }

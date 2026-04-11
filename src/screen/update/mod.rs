@@ -19,7 +19,7 @@ use crate::widget::circular::Circular;
 mod tasks;
 use tasks::*;
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Eq, PartialEq)]
 pub enum UpdateKind {
     #[default]
     Install, // First time install
@@ -63,6 +63,7 @@ impl Screen {
             download_assets(
                 Arc::clone(&self.paths),
                 client.clone(),
+                self.kind == UpdateKind::Normal,
             ),
             Message::Working,
             Message::Finished,

@@ -62,7 +62,7 @@ pub enum DownloadProgress {
 
 #[derive(Debug, Clone)]
 pub struct ProgressDownloading {
-    pub tmp_file_name: Option<String>,
+    pub title: Option<String>,
     pub eta: Option<u32>,
     pub download_speed: Option<usize>,
     pub downloaded_bytes: Option<usize>,
@@ -141,7 +141,7 @@ pub fn download_media(
             .arg("--progress-template")
             .arg("\
                 OK\
-                |_|%(progress.tmpfilename)s\
+                |_|%(info.title)s\
                 |_|%(progress.eta)s\
                 |_|%(progress.speed)s\
                 |_|%(progress.total_bytes_estimate)s\
@@ -399,7 +399,7 @@ pub fn download_media(
             if !line.starts_with("OK|_|") { continue }
             let mut it = line.split("|_|");
             it.next();
-            let temp_file_name = it.next().unwrap_or("NA");
+            let title = it.next().unwrap_or("NA");
             let eta = it.next().unwrap_or("NA");
             let speed = it.next().unwrap_or("NA");
             let total_bytes_estimate = it.next().unwrap_or("NA");
@@ -407,14 +407,14 @@ pub fn download_media(
             let downloaded_bytes = it.next().unwrap_or("NA");
             let percent = it.next().unwrap_or("NA");
 
-            let tmp_file_name = if temp_file_name != "NA" {
-                Some(temp_file_name.to_string())
+            let title = if title != "NA" {
+                Some(title.to_string())
             } else {
                 None
             };
 
             progress.send(DownloadProgress::Downloading(ProgressDownloading {
-                tmp_file_name,
+                title,
                 eta: eta.parse().ok(),
                 download_speed: speed.parse().ok(),
                 total_bytes: total_bytes.parse().ok(),
@@ -991,7 +991,7 @@ pub enum AudioFileType {
     VORBIS,
     AIFF, // Can't be extracted has to be remuxed and recoded
     MKA, // Same as above
-    BEST,
+    Best,
 }
 
 impl std::fmt::Display for AudioFileType {
@@ -1008,7 +1008,7 @@ impl std::fmt::Display for AudioFileType {
             Self::VORBIS => "vorbis",
             Self::AIFF => "aiff",
             Self::MKA => "mka",
-            Self::BEST => "best",
+            Self::Best => "best",
         };
 
         write!(f, "{s}")
@@ -1029,7 +1029,7 @@ impl AudioFileType {
             AudioFileType::VORBIS,
             AudioFileType::AIFF,
             AudioFileType::MKA,
-            AudioFileType::BEST,
+            AudioFileType::Best,
         ]
     }
 }

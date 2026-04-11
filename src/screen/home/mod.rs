@@ -9,6 +9,7 @@ use reqwest::Client;
 use tracing::{info, error};
 use ordermap::OrderMap;
 
+use crate::command::yt_dlp::{AudioFormat, AudioInfo, VideoInfo};
 use crate::platform::windows::{error_dialog, uninstall};
 use crate::{Images, Paths, Settings};
 use crate::lang::Translation;
@@ -62,6 +63,7 @@ pub struct Screen {
     menu_bar: menu_bar::State,
     
     link_input: String,
+    simple_link_input: String,
 
     info_panel: info_panel::State,
 
@@ -91,6 +93,10 @@ pub enum Message {
 
     ShowSideBar(bool),
     DownloadMessage(download::Message),
+
+    SimpleLinkInputChanged(String),
+    DownloadAudio,
+    DownloadVideo,
     
     CleanupDone(()),
     Debug,
@@ -119,6 +125,7 @@ impl Screen {
             menu_bar: menu_bar::State::new(settings.clone()),
             
             link_input: String::new(),
+            simple_link_input: String::new(),
 
             info_panel: info_panel::State::new(settings, paths),
 
@@ -159,6 +166,121 @@ impl Screen {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::DownloadVideo => {
+                match url::Url::parse(&self.simple_link_input) {
+                    Ok(_) => {},
+
+                    Err(e) => {
+                        error!("invalid simple url input -> {e}");
+                        return Action::None;
+                    }
+                }
+
+                if !self.paths.yt_dlp_exe.exists()
+                || !self.paths.ffmpeg_dir.exists()
+                || !self.paths.deno_exe.exists() {
+                    error!("tools missing");
+                    return Action::Run(
+                        Task::done(
+                            Message::ShowPopup(POPUP_UPDATE, true),
+                        ),
+                    );
+                }
+
+                let info = download::DownloadInfo::Video(download::VideoDownloadInfo {
+                    info: VideoInfo {
+                        title: None,
+                        channel: None,
+                        has_audio: true,
+                        f_144: None,
+                        f_240: None,
+                        f_360: None,
+                        f_480: None,
+                        f_720: None,
+                        f_1080: None,
+                        f_1440: None,
+                        f_2160: None,
+                        f_best: None,
+                        f_best_audio_only: None,
+                        f_best_audio: None,
+                    },
+                    selected_quality: crate::command::yt_dlp::VideoQuality::Best,
+                    selected_format: crate::command::yt_dlp::VideoFileType::Best,
+                    sb_options: None,
+                    download_location: self.settings.download_dir.clone(),
+                    link: self.simple_link_input.clone(),
+                    force_ipv4: false,
+                });
+
+                self.show_side_bar = true;
+                let id = self.ids.id();
+                let mut download = download::State::new(id, Arc::clone(&self.paths), info);
+                let task = download.start();
+                
+                self.downloads.insert(id, download);
+                
+                Action::Run(
+                    task.map(Message::DownloadMessage),
+                )
+            },
+            
+            Message::DownloadAudio => {
+                match url::Url::parse(&self.simple_link_input) {
+                    Ok(_) => {},
+
+                    Err(e) => {
+                        error!("invalid simple url input -> {e}");
+                        return Action::None;
+                    }
+                }
+
+                if !self.paths.yt_dlp_exe.exists()
+                || !self.paths.ffmpeg_dir.exists()
+                || !self.paths.deno_exe.exists() {
+                    error!("tools missing");
+                    return Action::Run(
+                        Task::done(
+                            Message::ShowPopup(POPUP_UPDATE, true),
+                        ),
+                    );
+                }
+
+                let info = download::DownloadInfo::Audio(download::AudioDownloadInfo {
+                    info: AudioInfo {
+                        title: None,
+                        channel: None,
+                        formats: Vec::new(),
+                        f_best: AudioFormat {
+                            format_id: String::new(),
+                            ext: String::new(),
+                        },
+                    },
+                    conversion_quality: crate::AudioConversionQuality::High,
+                    selected_format: crate::command::yt_dlp::AudioFileType::Best,
+                    sb_options: None,
+                    download_location: self.settings.download_dir.clone(),
+                    link: self.simple_link_input.clone(),
+                    force_ipv4: false,
+                });
+
+                self.show_side_bar = true;
+                let id = self.ids.id();
+                let mut download = download::State::new(id, Arc::clone(&self.paths), info);
+                let task = download.start();
+                
+                self.downloads.insert(id, download);
+                
+                Action::Run(
+                    task.map(Message::DownloadMessage),
+                )
+            },
+            
+            Message::SimpleLinkInputChanged(s) => {
+                info!("simple link info changed");
+                self.simple_link_input = s;
+                Action::None
+            },
+            
             Message::CleanupDone(_) => {
                 info!("Finished cleanup");
                 Action::None
@@ -310,7 +432,7 @@ impl Screen {
                 if !self.paths.yt_dlp_exe.exists()
                 || !self.paths.ffmpeg_dir.exists()
                 || !self.paths.deno_exe.exists() {
-                    error!("HOME: tools missing");
+                    error!("tools missing");
                     return Action::Run(
                         Task::done(
                             Message::ShowPopup(POPUP_UPDATE, true),
@@ -417,6 +539,8 @@ impl Screen {
             opaque(
                 container(
                     column![
+                        space().height(7),
+
                         center(
                             text(translation.info_panel_side_bar_title)
                                 .size(25),
@@ -425,12 +549,34 @@ impl Screen {
                         .height(Length::Shrink),
 
                         space().height(10),
+                        rule::horizontal(1),
                             
                         scrollable(
                             Column::from_iter(downloads)
                                 .width(Length::Fill)
                                 .align_x(Horizontal::Center),
                         ),
+
+                        space().height(Length::Fill),
+
+                        space().height(10),
+                        rule::horizontal(1),
+                        space().height(10),
+                        text_input(translation.home_screen_link_input_placeholder, &self.simple_link_input)
+                            .on_input(Message::SimpleLinkInputChanged),
+                        
+                        space().height(10),
+                        row![
+                            space().width(Length::Fill),
+                            button("Video")
+                                .on_press(Message::DownloadVideo),
+                            space().width(20),
+                            button("Audio")
+                                .on_press(Message::DownloadAudio),
+                            space().width(Length::Fill),
+                        ]
+                        .align_y(Vertical::Center),
+                        space().height(10),
                     ],
                 )
                 .style(|_| {

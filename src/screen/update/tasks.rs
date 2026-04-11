@@ -24,7 +24,7 @@ pub struct UpdateResult {
 
 // Downloads all the needed assets based on what is missing
 // Creates need directory structure if missing
-pub fn download_assets(paths: Arc<Paths>, client: Client) -> impl Straw<UpdateResult, DownloadProgress, ()> {
+pub fn download_assets(paths: Arc<Paths>, client: Client, is_update: bool) -> impl Straw<UpdateResult, DownloadProgress, ()> {
     sipper(async move |mut progress| {
         let mut result = UpdateResult {
             yt_dlp: false,
@@ -57,51 +57,54 @@ pub fn download_assets(paths: Arc<Paths>, client: Client) -> impl Straw<UpdateRe
             )?;
         }
 
-        // Checks the update status of yt-dlp
-        let latest_app_release = github::query_latest_release(
-            client.clone(),
-            github::APP_OWNER,
-            github::APP_REPO,
-        ).await.map_err(|e|
-            error!("DOWNLOAD_ASSETS: failed to query latest app release -> {e}")
-        )?;
+        // Skip app update if installing for the first time
+        if is_update {
+            // Checks the update status of yt-dlp
+            let latest_app_release = github::query_latest_release(
+                client.clone(),
+                github::APP_OWNER,
+                github::APP_REPO,
+            ).await.map_err(|e|
+                error!("DOWNLOAD_ASSETS: failed to query latest app release -> {e}")
+            )?;
 
-        info!("DOWNLOAD_ASSETS: Latest app version: {}", latest_app_release.tag_name);
+            info!("DOWNLOAD_ASSETS: Latest app version: {}", latest_app_release.tag_name);
 
-        let update_app = latest_app_release.tag_name != VERSION;
+            let update_app = latest_app_release.tag_name != VERSION;
 
-        if update_app {
-            result.app = true;
-            let mut file = tokio::fs::File::create(&paths.tmp_app_exe).await
-                .map_err(|e| error!("DOWNLOAD_ASSETS: failed to create new yt_downloader.exe file -> {e}"))?;
+            if update_app {
+                result.app = true;
+                let mut file = tokio::fs::File::create(&paths.tmp_app_exe).await
+                    .map_err(|e| error!("DOWNLOAD_ASSETS: failed to create new yt_downloader.exe file -> {e}"))?;
             
-            let mut asset_url = "";
-            for e in &latest_app_release.assets {
-                if e.name == "yt_downloader.exe" {
-                    asset_url = &e.url;
+                let mut asset_url = "";
+                for e in &latest_app_release.assets {
+                    if e.name == "yt_downloader.exe" {
+                        asset_url = &e.url;
+                    }
                 }
-            }
 
-            let response = github::start_asset_download(client.clone(), asset_url).await
-                .map_err(|e| error!("DOWNLOAD_ASSETS: failed to intialize app download with the github api -> {e}"))?;
+                let response = github::start_asset_download(client.clone(), asset_url).await
+                    .map_err(|e| error!("DOWNLOAD_ASSETS: failed to intialize app download with the github api -> {e}"))?;
 
-            let total = response.content_length().ok_or(())
-                .map_err(|_| error!("DOWNLOAD_ASSETS: failed to get app content length"))?;
+                let total = response.content_length().ok_or(())
+                    .map_err(|_| error!("DOWNLOAD_ASSETS: failed to get app content length"))?;
 
-            progress.send(DownloadProgress::Downloading(Asset::App, 0.0)).await;
+                progress.send(DownloadProgress::Downloading(Asset::App, 0.0)).await;
 
-            let mut byte_stream = response.bytes_stream();
-            let mut downloaded = 0;
+                let mut byte_stream = response.bytes_stream();
+                let mut downloaded = 0;
 
-            info!("DOWNLOAD_ASSETS: downloading app: bytes={total} url={asset_url}");
+                info!("DOWNLOAD_ASSETS: downloading app: bytes={total} url={asset_url}");
 
-            while let Some(next_bytes) = byte_stream.next().await {
-                let bytes = next_bytes.map_err(|e| info!("DOWNLOAD_ASSETS: failed to download app -> {e}"))?;
-                downloaded += bytes.len();
-                file.write_all(&bytes).await
-                    .map_err(|e| error!("DOWNLOAD_ASSETS: failed to write to yt_downloader.exe file -> {e}"))?;
+                while let Some(next_bytes) = byte_stream.next().await {
+                    let bytes = next_bytes.map_err(|e| info!("DOWNLOAD_ASSETS: failed to download app -> {e}"))?;
+                    downloaded += bytes.len();
+                    file.write_all(&bytes).await
+                        .map_err(|e| error!("DOWNLOAD_ASSETS: failed to write to yt_downloader.exe file -> {e}"))?;
 
-                progress.send(DownloadProgress::Downloading(Asset::App, (downloaded as f32) / (total as f32))).await;
+                    progress.send(DownloadProgress::Downloading(Asset::App, (downloaded as f32) / (total as f32))).await;
+                }
             }
         }
 

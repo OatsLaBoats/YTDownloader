@@ -169,7 +169,7 @@ pub struct State {
     task: Option<iced::task::Handle>,
     process: Option<u32>,
 
-    tmp_file_name: Option<String>,
+    title: Option<String>,
     total_bytes: usize,
     total_bytes_estimate: f64,
     downloaded_bytes: usize,
@@ -180,6 +180,16 @@ pub struct State {
 
 impl State {
     pub fn new(id: usize, paths: Arc<Paths>, info: DownloadInfo) -> Self {
+        let title = match &info {
+            DownloadInfo::Video(v) => {
+                v.info.title.clone()
+            },
+
+            DownloadInfo::Audio(v) => {
+                v.info.title.clone()
+            },
+        };
+
         Self {
             id,
             paths,
@@ -191,7 +201,7 @@ impl State {
             task: None,
             process: None,
 
-            tmp_file_name: None,
+            title,
             total_bytes: 0,
             downloaded_bytes: 0,
             eta: 0,
@@ -346,8 +356,8 @@ impl State {
                     },
         
                     DownloadProgress::Downloading(p) => {
-                        if self.tmp_file_name.is_none() {
-                            self.tmp_file_name = p.tmp_file_name;
+                        if self.title.is_none() {
+                            self.title = p.title;
                         }
 
                         if let Some(v) = p.total_bytes {
@@ -399,7 +409,11 @@ impl State {
         let eta_minutes = self.eta / 60;
         let eta_seconds = self.eta - eta_minutes;
 
-        let bar: Element<'_, Message> = if self.progress_state == ProgressState::Downloading {
+        let invalid_percent =
+            self.percent >= 100.0 ||
+            self.percent <= 0.0;
+
+        let bar: Element<'_, Message> = if self.progress_state == ProgressState::Downloading && !invalid_percent {
             container(progress_bar(0.0f32..=100.0f32, self.percent as f32))
                 .height(10)
                 .into()
@@ -413,7 +427,7 @@ impl State {
         let status: Element<'_, Message> = match self.progress_state {
             ProgressState::Starting => text(translation.download_status_starting).into(),
             ProgressState::Downloading => text(translation.download_status_downloading).into(),
-            ProgressState::PostProcessing => text(translation.download_status_re_encoding).into(),
+            ProgressState::PostProcessing => text(translation.download_status_postprocessing).into(),
             ProgressState::Finished(error) => if error {
                 rich_text![
                     span(translation.download_status_failed)
@@ -426,22 +440,9 @@ impl State {
             },
         };
 
-        let title: &str = match &self.info {
-            DownloadInfo::Video(v) => {
-                if let Some(v) = &v.info.title {
-                    &v
-                } else {
-                    translation.general_unknown
-                }
-            },
-
-            DownloadInfo::Audio(v) => {
-                if let Some(v) = &v.info.title {
-                    &v
-                } else {
-                    translation.general_unknown
-                }
-            },
+        let title: &str = match &self.title {
+            Some(v) => v,
+            None => translation.general_unknown,
         };
 
         let close_button: Element<'_, Message> = if self.progress_state == ProgressState::PostProcessing {
@@ -504,13 +505,7 @@ impl State {
         } else {
             space().into()
         };
-
-        let eta_space = if eta_seconds == 0 && eta_minutes == 0 {
-            space()
-        } else {
-            space().width(5)
-        };
-        
+       
         center(
             column![
                 row![
@@ -522,7 +517,7 @@ impl State {
                     space().width(10),
                     row![
                         bar,
-                        eta_space,
+                        space().width(5),
                         eta,
                     ]
                     .align_y(Vertical::Center),

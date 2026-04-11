@@ -96,7 +96,7 @@ pub struct Translation {
 
     pub download_status_downloading: Text,
     pub download_status_starting: Text,
-    pub download_status_re_encoding: Text,
+    pub download_status_postprocessing: Text,
     pub download_status_failed: Text,
     pub download_status_finished: Text,
 }

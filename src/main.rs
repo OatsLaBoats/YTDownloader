@@ -16,7 +16,8 @@ use yt_downloader::screen::update::UpdateKind;
 use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
-// TODO: Settings migration mechanism for when settings change
+// TODO: Settings migration mechanism for when settings change between versions
+
 fn ensure_log_dir_exists() -> PathBuf {
     let Some(mut dir) = dirs::data_local_dir() else { return PathBuf::new() };
     dir.push("YT Downloader/logs");
@@ -244,8 +245,8 @@ impl State {
 
             audio_only: false,
             conversion_quality: AudioConversionQuality::Medium,
-            audio_format: command::yt_dlp::AudioFileType::MP3,
-            video_format: command::yt_dlp::VideoFileType::MP4,
+            audio_format: command::yt_dlp::AudioFileType::Best,
+            video_format: command::yt_dlp::VideoFileType::Best,
             download_dir: paths.downloads_dir.to_string_lossy().to_string(),
             ..Default::default()
         };
