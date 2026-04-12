@@ -17,6 +17,8 @@ use yt_downloader::screen;
 use yt_downloader::platform::windows::*;
 
 // TODO: Settings migration mechanism for when settings change between versions
+// TODO: Process groups using the process-wrap crate
+// TODO: Call ffmpeg manually for better control
 
 fn ensure_log_dir_exists() -> PathBuf {
     let Some(mut dir) = dirs::data_local_dir() else { return PathBuf::new() };

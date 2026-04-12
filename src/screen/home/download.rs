@@ -413,10 +413,19 @@ impl State {
             self.percent >= 100.0 ||
             self.percent <= 0.0;
 
+        let speed: Element<'_, Message> = if self.download_speed != 0 {
+            text(format!("{:.2} MB/s", self.download_speed as f64 / 1024.0 / 1024.0)).into()
+        } else {
+            space().into()
+        };
+
         let bar: Element<'_, Message> = if self.progress_state == ProgressState::Downloading && !invalid_percent {
-            container(progress_bar(0.0f32..=100.0f32, self.percent as f32))
-                .height(10)
-                .into()
+            stack![
+                container(progress_bar(0.0f32..=100.0f32, self.percent as f32))
+                    .height(20),
+                center(speed),
+            ]
+            .into()
         } else if let ProgressState::Finished(_) = self.progress_state {
             space().into()
         } else {

@@ -416,7 +416,7 @@ pub fn download_media(
             progress.send(DownloadProgress::Downloading(ProgressDownloading {
                 title,
                 eta: eta.parse().ok(),
-                download_speed: speed.parse().ok(),
+                download_speed: speed.parse::<f64>().ok().map(|x| x as usize),
                 total_bytes: total_bytes.parse().ok(),
                 total_bytes_estimate: total_bytes_estimate.parse().ok(),
                 downloaded_bytes: downloaded_bytes.parse().ok(),
