@@ -11,7 +11,6 @@ use tracing::{info, error};
 
 use crate::command::yt_dlp::{AudioDownloadParams, AudioFileType, AudioInfo, DownloadParams, DownloadProgress, VideoDownloadParams, VideoFileType, VideoInfo, VideoQuality, download_media};
 use crate::lang::Translation;
-use crate::platform::windows::kill_process;
 use crate::screen::TOOLTIP_DELAY;
 use crate::{AudioConversionQuality, Images, Paths, SponsorBlockOption};
 use crate::widget::linear::Linear;
@@ -311,9 +310,9 @@ impl State {
                 }
 
                 // Ensure it is killed even if tokio doesn't
-                if let Some(id) = self.process {
-                    let _ = kill_process(id);
-                }
+                // if let Some(id) = self.process {
+                //     let _ = kill_process(id);
+                // }
 
                 let mut download_path = self.paths.video_dir.clone();
                 download_path.push(format!("dl{}", self.hash));
